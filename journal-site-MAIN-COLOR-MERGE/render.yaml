@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: journal-site
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: JOURNAL_SOURCE
+        value: yandex-public-cache
+      - key: YANDEX_DISK_PUBLIC_URL
+        value: https://disk.yandex.ru/i/sGTYC8nUWYAsRw
+      - key: YANDEX_DISK_PUBLIC_PATH
+        value: ""
+      - key: JOURNAL_CACHE_INTERVAL_MINUTES
+        value: "30"
+      - key: JOURNAL_CACHE_MAX_FILES
+        value: "2"
+      - key: JOURNAL_CACHE_DIR
+        value: /tmp/journal-cache
