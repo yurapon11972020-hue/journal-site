@@ -147,6 +147,13 @@ export function classifyMarkValue(value: string | number | null | undefined): Cl
     return { tone: 'empty', displayText: '—', isColored: false };
   }
 
+  // Values such as \1, \2, \13 are service markers from the Excel journal.
+  // They are not grades and must be displayed exactly as in Excel, without recoloring.
+  if (/^[\\/]\d+$/.test(displayText.trim())) {
+    const exactText = displayText.trim().startsWith('/') ? `\${displayText.trim().slice(1)}` : displayText.trim();
+    return { tone: 'plain', displayText: exactText, isColored: false };
+  }
+
   // These are service notes, not marks/absence marks. They must stay uncolored.
   const explicitlyPlain = new Set([
     'н/отр',
