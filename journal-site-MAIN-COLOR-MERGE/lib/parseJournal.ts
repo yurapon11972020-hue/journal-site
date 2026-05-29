@@ -756,6 +756,45 @@ function formatReportAverageText(value: string): string {
   return parsed.toFixed(2).replace('.', ',');
 }
 
+function formatReportAverageNumber(value: number | null): string | null {
+  if (value === null) {
+    return null;
+  }
+
+  return value.toFixed(2).replace('.', ',');
+}
+
+function appendMissingReportSubjects(rows: ReportCardRow[], matchedStudent: StudentRecord | undefined): ReportCardRow[] {
+  if (!matchedStudent) {
+    return rows;
+  }
+
+  const existingSubjects = new Set(rows.map((row) => normalizeSubjectKey(row.subjectName)));
+  const completedRows = [...rows];
+
+  for (const subject of matchedStudent.subjects) {
+    const subjectKey = normalizeSubjectKey(subject.subjectName);
+
+    if (!subjectKey || existingSubjects.has(subjectKey)) {
+      continue;
+    }
+
+    existingSubjects.add(subjectKey);
+    completedRows.push({
+      index: completedRows.length + 1,
+      subjectName: subject.subjectName,
+      session: null,
+      average: subject.average,
+      averageLabel: subject.average === null ? 'Нет оценок' : formatReportAverageNumber(subject.average),
+      absences: subject.absences,
+      validAbsenceLabel: String(subject.absences.valid ?? 0),
+      invalidAbsenceLabel: String(subject.absences.invalid ?? 0),
+    });
+  }
+
+  return completedRows;
+}
+
 function getReportCellText(sheet: XLSX.WorkSheet, row: number, col: number): string {
   const text = getCellText(sheet, row, col);
 
@@ -875,7 +914,9 @@ function parseReportCards(workbook: XLSX.WorkBook, students: StudentRecord[]): R
       totalAbsenceCount = totalAbsences.valid + totalAbsences.invalid;
     }
 
-    const normalizedRows = rows.map((row, rowIndex) => ({
+    const rowsWithMissingSubjects = appendMissingReportSubjects(rows, matchedStudent);
+
+    const normalizedRows = rowsWithMissingSubjects.map((row, rowIndex) => ({
       ...row,
       index: rowIndex + 1,
     }));
