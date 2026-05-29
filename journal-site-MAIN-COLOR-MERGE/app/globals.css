@@ -520,49 +520,49 @@ select {
 
 .mark--excellent {
   color: #dffbea;
-  background: linear-gradient(135deg, rgba(22, 163, 74, 0.96), rgba(21, 128, 61, 0.88));
+  background: rgba(34, 197, 94, 0.28);
   border-color: rgba(74, 222, 128, 0.72);
 }
 
 .mark--good {
   color: #e7f0ff;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.96), rgba(30, 64, 175, 0.88));
+  background: rgba(59, 130, 246, 0.28);
   border-color: rgba(147, 197, 253, 0.7);
 }
 
 .mark--ok {
   color: #fff7db;
-  background: linear-gradient(135deg, rgba(217, 119, 6, 0.98), rgba(180, 83, 9, 0.9));
+  background: rgba(245, 158, 11, 0.3);
   border-color: rgba(251, 191, 36, 0.72);
 }
 
 .mark--bad {
   color: #fff1f2;
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.98), rgba(153, 27, 27, 0.9));
+  background: rgba(244, 63, 94, 0.3);
   border-color: rgba(248, 113, 113, 0.72);
 }
 
 .mark--absence {
   color: #fff1f2;
-  background: linear-gradient(135deg, rgba(190, 18, 60, 0.98), rgba(136, 19, 55, 0.92));
+  background: rgba(225, 29, 72, 0.3);
   border-color: rgba(251, 113, 133, 0.72);
 }
 
 .mark--valid-absence {
   color: #e0f2fe;
-  background: linear-gradient(135deg, rgba(3, 105, 161, 0.96), rgba(12, 74, 110, 0.9));
+  background: rgba(14, 165, 233, 0.26);
   border-color: rgba(125, 211, 252, 0.72);
 }
 
 .mark--electronic-absence {
   color: #faf5ff;
-  background: linear-gradient(135deg, rgba(147, 51, 234, 0.98), rgba(107, 33, 168, 0.9));
+  background: rgba(168, 85, 247, 0.28);
   border-color: rgba(216, 180, 254, 0.72);
 }
 
 .mark--credit {
   color: #ecfeff;
-  background: linear-gradient(135deg, rgba(13, 148, 136, 0.96), rgba(15, 118, 110, 0.9));
+  background: rgba(20, 184, 166, 0.26);
   border-color: rgba(94, 234, 212, 0.72);
 }
 
@@ -615,54 +615,55 @@ html[data-theme='light'] .mark {
   box-shadow: 0 6px 16px rgba(32, 54, 94, 0.08);
 }
 
-/* Full-cell color mode for marks: the whole table cell is colored, not only the small badge. */
+/* Full-cell color mode for marks: the whole table cell is colored, not only the small badge.
+   Soft mode: flat transparent fills, no gradients. */
 .journal-table td.center-cell:has(.mark--excellent) {
-  color: #f0fdf4;
-  background: linear-gradient(135deg, rgba(22, 163, 74, 0.95), rgba(21, 128, 61, 0.86));
-  border-color: rgba(74, 222, 128, 0.52);
+  color: #dcfce7;
+  background: rgba(34, 197, 94, 0.24);
+  border-color: rgba(74, 222, 128, 0.34);
 }
 
 .journal-table td.center-cell:has(.mark--good) {
-  color: #eff6ff;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.95), rgba(30, 64, 175, 0.86));
-  border-color: rgba(147, 197, 253, 0.5);
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.24);
+  border-color: rgba(147, 197, 253, 0.34);
 }
 
 .journal-table td.center-cell:has(.mark--ok) {
-  color: #fffbeb;
-  background: linear-gradient(135deg, rgba(217, 119, 6, 0.95), rgba(180, 83, 9, 0.86));
-  border-color: rgba(251, 191, 36, 0.52);
+  color: #fef3c7;
+  background: rgba(245, 158, 11, 0.25);
+  border-color: rgba(251, 191, 36, 0.34);
 }
 
 .journal-table td.center-cell:has(.mark--bad),
 .journal-table td.center-cell:has(.mark--absence) {
-  color: #fff1f2;
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.95), rgba(153, 27, 27, 0.88));
-  border-color: rgba(248, 113, 113, 0.52);
+  color: #ffe4e6;
+  background: rgba(244, 63, 94, 0.25);
+  border-color: rgba(251, 113, 133, 0.34);
 }
 
 .journal-table td.center-cell:has(.mark--valid-absence) {
-  color: #f0f9ff;
-  background: linear-gradient(135deg, rgba(3, 105, 161, 0.94), rgba(12, 74, 110, 0.88));
-  border-color: rgba(125, 211, 252, 0.52);
+  color: #e0f2fe;
+  background: rgba(14, 165, 233, 0.22);
+  border-color: rgba(125, 211, 252, 0.34);
 }
 
 .journal-table td.center-cell:has(.mark--electronic-absence) {
-  color: #faf5ff;
-  background: linear-gradient(135deg, rgba(147, 51, 234, 0.95), rgba(107, 33, 168, 0.88));
-  border-color: rgba(216, 180, 254, 0.52);
+  color: #f3e8ff;
+  background: rgba(168, 85, 247, 0.24);
+  border-color: rgba(216, 180, 254, 0.34);
 }
 
 .journal-table td.center-cell:has(.mark--credit) {
-  color: #ecfeff;
-  background: linear-gradient(135deg, rgba(13, 148, 136, 0.94), rgba(15, 118, 110, 0.88));
-  border-color: rgba(94, 234, 212, 0.52);
+  color: #ccfbf1;
+  background: rgba(20, 184, 166, 0.22);
+  border-color: rgba(94, 234, 212, 0.34);
 }
 
 .journal-table td.center-cell:has(.mark--note) {
-  color: #f8fafc;
-  background: linear-gradient(135deg, rgba(71, 85, 105, 0.92), rgba(51, 65, 85, 0.88));
-  border-color: rgba(148, 163, 184, 0.44);
+  color: #e2e8f0;
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.28);
 }
 
 /* Keep blank cells quiet; only real marks/values fill the cell. */
@@ -696,37 +697,42 @@ html[data-theme='light'] .mark {
 }
 
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--excellent) {
-  color: #052e16;
-  background: linear-gradient(135deg, rgba(187, 247, 208, 0.98), rgba(134, 239, 172, 0.86));
+  color: #14532d;
+  background: rgba(34, 197, 94, 0.22);
 }
 
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--good) {
-  color: #172554;
-  background: linear-gradient(135deg, rgba(191, 219, 254, 0.98), rgba(147, 197, 253, 0.88));
+  color: #1e3a8a;
+  background: rgba(59, 130, 246, 0.20);
 }
 
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--ok) {
-  color: #451a03;
-  background: linear-gradient(135deg, rgba(254, 240, 138, 0.98), rgba(253, 186, 116, 0.9));
+  color: #78350f;
+  background: rgba(245, 158, 11, 0.22);
 }
 
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--bad),
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--absence) {
-  color: #450a0a;
-  background: linear-gradient(135deg, rgba(254, 202, 202, 0.98), rgba(252, 165, 165, 0.9));
+  color: #7f1d1d;
+  background: rgba(244, 63, 94, 0.20);
 }
 
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--valid-absence) {
-  color: #082f49;
-  background: linear-gradient(135deg, rgba(186, 230, 253, 0.98), rgba(125, 211, 252, 0.9));
+  color: #075985;
+  background: rgba(14, 165, 233, 0.18);
 }
 
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--electronic-absence) {
-  color: #3b0764;
-  background: linear-gradient(135deg, rgba(233, 213, 255, 0.98), rgba(216, 180, 254, 0.9));
+  color: #581c87;
+  background: rgba(168, 85, 247, 0.18);
 }
 
 html[data-theme='light'] .journal-table td.center-cell:has(.mark--credit) {
   color: #134e4a;
-  background: linear-gradient(135deg, rgba(153, 246, 228, 0.98), rgba(94, 234, 212, 0.9));
+  background: rgba(20, 184, 166, 0.18);
+}
+
+html[data-theme='light'] .journal-table td.center-cell:has(.mark--note) {
+  color: #334155;
+  background: rgba(100, 116, 139, 0.14);
 }
