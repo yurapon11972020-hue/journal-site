@@ -560,16 +560,12 @@ select {
   border-color: rgba(216, 180, 254, 0.72);
 }
 
-.mark--credit {
-  color: #ecfeff;
-  background: rgba(20, 184, 166, 0.26);
-  border-color: rgba(94, 234, 212, 0.72);
-}
-
-.mark--note {
+.mark--credit,
+.mark--note,
+.mark--plain {
   color: var(--text);
-  background: color-mix(in srgb, var(--accent) 16%, var(--panel-alt));
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: color-mix(in srgb, var(--panel-alt) 60%, transparent);
+  border-color: color-mix(in srgb, var(--border) 58%, transparent);
 }
 
 .mark--empty {
@@ -654,16 +650,12 @@ html[data-theme='light'] .mark {
   border-color: rgba(216, 180, 254, 0.34);
 }
 
-.journal-table td.center-cell:has(.mark--credit) {
-  color: #ccfbf1;
-  background: rgba(20, 184, 166, 0.22);
-  border-color: rgba(94, 234, 212, 0.34);
-}
-
-.journal-table td.center-cell:has(.mark--note) {
-  color: #e2e8f0;
-  background: rgba(148, 163, 184, 0.18);
-  border-color: rgba(148, 163, 184, 0.28);
+.journal-table td.center-cell:has(.mark--credit),
+.journal-table td.center-cell:has(.mark--note),
+.journal-table td.center-cell:has(.mark--plain) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel-alt) 46%, transparent);
+  border-color: color-mix(in srgb, var(--border) 52%, transparent);
 }
 
 /* Keep blank cells quiet; only real marks/values fill the cell. */
@@ -727,12 +719,9 @@ html[data-theme='light'] .journal-table td.center-cell:has(.mark--electronic-abs
   background: rgba(168, 85, 247, 0.18);
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--credit) {
-  color: #134e4a;
-  background: rgba(20, 184, 166, 0.18);
-}
-
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--note) {
-  color: #334155;
-  background: rgba(100, 116, 139, 0.14);
+html[data-theme='light'] .journal-table td.center-cell:has(.mark--credit),
+html[data-theme='light'] .journal-table td.center-cell:has(.mark--note),
+html[data-theme='light'] .journal-table td.center-cell:has(.mark--plain) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel-alt) 46%, transparent);
 }

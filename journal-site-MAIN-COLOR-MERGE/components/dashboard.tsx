@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { CSSProperties, useEffect, useMemo, useState } from 'react';
 
+import { classifyMarkValue, markToneToClass } from '@/lib/mark-classifier';
 import type { GradeEntry, JournalData, LessonTopic, ReportCard } from '@/lib/types';
 
 interface DashboardProps {
@@ -49,95 +50,11 @@ function formatAverage(value: number | null): string {
 }
 
 
-function getAverageClass(value: number | null): string {
-  if (value === null) {
-    return 'mark mark--empty';
-  }
-
-  if (value >= 4.5) {
-    return 'mark mark--excellent';
-  }
-
-  if (value >= 3.8) {
-    return 'mark mark--good';
-  }
-
-  if (value >= 3) {
-    return 'mark mark--ok';
-  }
-
-  return 'mark mark--bad';
-}
-
-function normalizeMarkValue(value: string): string {
-  return value.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, '');
-}
-
-function cleanMarkText(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.replace(/^[\\/]+(?=[1-5][+-]?$)/, '');
-}
-
-function getGradeClass(value: string | null | undefined): string {
-  const rawText = cleanMarkText(value || '');
-  const rawNormalized = normalizeMarkValue(rawText);
-  const normalized = rawNormalized.replace(/[.,]/g, '');
-
-  if (!rawNormalized) {
-    return 'mark mark--empty';
-  }
-
-  const numericText = rawNormalized.replace(',', '.');
-  if (/^\d+(\.\d+)?$/.test(numericText)) {
-    const numericValue = Number(numericText);
-    if (numericValue === 0) {
-      return 'mark mark--empty';
-    }
-    return getAverageClass(numericValue);
-  }
-
-  if (normalized.includes('эн') || normalized.includes('э/н')) {
-    return 'mark mark--electronic-absence';
-  }
-
-  if (normalized.includes('н/у') || normalized.includes('ну/отр') || normalized.includes('н/у/отр')) {
-    return 'mark mark--valid-absence';
-  }
-
-  if (normalized.startsWith('н')) {
-    return 'mark mark--absence';
-  }
-
-  const embeddedGrade = normalized.match(/[1-5]/)?.[0] ?? null;
-  if (embeddedGrade === '5') {
-    return 'mark mark--excellent';
-  }
-
-  if (embeddedGrade === '4') {
-    return 'mark mark--good';
-  }
-
-  if (embeddedGrade === '3') {
-    return 'mark mark--ok';
-  }
-
-  if (embeddedGrade === '1' || embeddedGrade === '2') {
-    return 'mark mark--bad';
-  }
-
-  if (['зач', 'зачет', '+', 'оп'].includes(normalized)) {
-    return 'mark mark--credit';
-  }
-
-  return 'mark mark--note';
-}
-
 function MarkBadge({ value, className = '' }: { value: string | number | null | undefined; className?: string }) {
-  const rawText = value === null || value === undefined || value === '' ? '' : String(value);
-  const text = rawText ? cleanMarkText(rawText) : '—';
-  const markClass = typeof value === 'number' ? getAverageClass(value) : getGradeClass(text);
+  const classified = classifyMarkValue(value);
+  const markClass = `mark ${markToneToClass(classified.tone)}`;
 
-  return <span className={`${markClass} ${className}`.trim()}>{text}</span>;
+  return <span className={`${markClass} ${className}`.trim()}>{classified.displayText}</span>;
 }
 
 function AbsenceBadge({ value, type }: { value: number; type: 'valid' | 'invalid' }) {

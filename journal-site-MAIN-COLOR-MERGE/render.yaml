@@ -3,20 +3,18 @@ services:
     name: journal-site
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --package-lock=false --registry=https://registry.npmjs.org/ --no-audit --no-fund && npm run build
     startCommand: npm start
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: 24.14.1
+        value: 20.11.1
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
       - key: JOURNAL_SOURCE
         value: yandex-public-cache
       - key: YANDEX_DISK_PUBLIC_URL
         value: https://disk.yandex.ru/i/sGTYC8nUWYAsRw
-      - key: YANDEX_DISK_PUBLIC_PATH
-        value: ""
       - key: JOURNAL_CACHE_INTERVAL_MINUTES
         value: "30"
       - key: JOURNAL_CACHE_MAX_FILES
