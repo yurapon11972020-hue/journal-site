@@ -35,7 +35,6 @@ const LATIN_TO_CYRILLIC: Record<string, string> = {
 function normalizeVisibleText(value: string): string {
   return value
     .replace(/\u00a0/g, ' ')
-    .replace(/[\\|]/g, '/')
     .replace(/[–—−]/g, '-')
     .replace(/\s+/g, ' ')
     .trim();
@@ -43,6 +42,7 @@ function normalizeVisibleText(value: string): string {
 
 function normalizeKey(value: string): string {
   const normalized = normalizeVisibleText(value)
+    .replace(/[\\|]/g, '/')
     .toLowerCase()
     .replace(/ё/g, 'е')
     .replace(/\s+/g, '')
@@ -52,7 +52,7 @@ function normalizeKey(value: string): string {
 }
 
 function cleanDisplayText(value: string): string {
-  return normalizeVisibleText(value).replace(/^[\/]+(?=[1-5][+-]?$)/, '');
+  return normalizeVisibleText(value);
 }
 
 function formatNumberMark(value: number): string {
@@ -150,7 +150,8 @@ export function classifyMarkValue(value: string | number | null | undefined): Cl
   // Values such as \1, \2, \13 are service markers from the Excel journal.
   // They are not grades and must be displayed exactly as in Excel, without recoloring.
   if (/^[\\/]\d+$/.test(displayText.trim())) {
-    const exactText = displayText.trim().startsWith('/') ? `\${displayText.trim().slice(1)}` : displayText.trim();
+    const trimmed = displayText.trim();
+    const exactText = trimmed.startsWith('/') ? `\\${trimmed.slice(1)}` : trimmed;
     return { tone: 'plain', displayText: exactText, isColored: false };
   }
 
