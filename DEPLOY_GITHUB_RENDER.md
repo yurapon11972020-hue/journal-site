@@ -1,0 +1,683 @@
+'use client';
+
+import Link from 'next/link';
+import { CSSProperties, useEffect, useMemo, useState } from 'react';
+
+import { classifyMarkValue, markToneToClass } from '@/lib/mark-classifier';
+import type { GradeEntry, JournalData, LessonTopic, ReportCard } from '@/lib/types';
+
+interface DashboardProps {
+  data: JournalData;
+  backHref?: string;
+  backLabel?: string;
+}
+
+type ReportSort = 'name' | 'avg-desc' | 'avg-asc' | 'absences';
+type SubjectSort = 'default' | 'name' | 'avg-desc' | 'avg-asc' | 'absences';
+
+// Студент считается «требующим внимания», если его средний балл ниже этого порога.
+// Поменяй число, если нужен другой порог.
+const AT_RISK_AVERAGE = 3;
+
+interface GroupStats {
+  studentCount: number;
+  subjectCount: number;
+  averageGpa: number | null;
+  validAbsences: number;
+  invalidAbsences: number;
+  atRiskCount: number;
+}
+
+interface SubjectStudentRow {
+  studentId: number;
+  studentName: string;
+  average: number | null;
+  absences: {
+    valid: number;
+    invalid: number;
+  };
+  grades: GradeEntry[];
+}
+
+interface SubjectColumn {
+  key: string;
+  column: string;
+  label: string;
+  monthLabel: string | null;
+  dayLabel: string | null;
+}
+
+interface SubjectAggregate {
+  id: string;
+  sheetName: string;
+  subjectName: string;
+  teacherName: string | null;
+  students: SubjectStudentRow[];
+  columns: SubjectColumn[];
+  lessonTopics: LessonTopic[];
+}
+
+function formatAverage(value: number | null): string {
+  if (value === null) {
+    return '—';
+  }
+
+  return value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+}
+
+function isAtRiskAverage(average: number | null): boolean {
+  return average !== null && average < AT_RISK_AVERAGE;
+}
+
+function compareNullableNumber(a: number | null, b: number | null, direction: 'asc' | 'desc'): number {
+  if (a === null && b === null) {
+    return 0;
+  }
+  if (a === null) {
+    return 1;
+  }
+  if (b === null) {
+    return -1;
+  }
+  return direction === 'asc' ? a - b : b - a;
+}
+
+function computeGroupStats(data: JournalData): GroupStats {
+  const averages = data.students
+    .map((student) => student.overallAverage)
+    .filter((value): value is number => value !== null);
+
+  const averageGpa = averages.length
+    ? averages.reduce((sum, value) => sum + value, 0) / averages.length
+    : null;
+
+  let validAbsences = 0;
+  let invalidAbsences = 0;
+  let atRiskCount = 0;
+
+  for (const student of data.students) {
+    validAbsences += student.totalAbsences.valid;
+    invalidAbsences += student.totalAbsences.invalid;
+    if (isAtRiskAverage(student.overallAverage)) {
+      atRiskCount += 1;
+    }
+  }
+
+  return {
+    studentCount: data.studentCount || data.students.length,
+    subjectCount: data.subjectCount || data.subjects.length,
+    averageGpa,
+    validAbsences,
+    invalidAbsences,
+    atRiskCount,
+  };
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: 'default' | 'warning' | 'good';
+}) {
+  const toneStyle: CSSProperties =
+    tone === 'warning'
+      ? { borderColor: 'rgba(248, 113, 113, 0.55)', background: 'rgba(244, 63, 94, 0.12)' }
+      : tone === 'good'
+        ? { borderColor: 'rgba(74, 222, 128, 0.5)', background: 'rgba(34, 197, 94, 0.12)' }
+        : {};
+
+  return (
+    <div
+      style={{
+        border: '1px solid var(--border)',
+        background: 'var(--panel)',
+        borderRadius: '14px',
+        padding: '12px 14px',
+        boxShadow: 'var(--shadow)',
+        display: 'grid',
+        gap: '4px',
+        ...toneStyle,
+      }}
+    >
+      <span style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>{label}</span>
+      <span style={{ fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.1 }}>{value}</span>
+      {hint ? <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>{hint}</span> : null}
+    </div>
+  );
+}
+
+function MarkBadge({ value, className = '' }: { value: string | number | null | undefined; className?: string }) {
+  const classified = classifyMarkValue(value);
+  const markClass = `mark ${markToneToClass(classified.tone)}`;
+
+  return <span className={`${markClass} ${className}`.trim()}>{classified.displayText}</span>;
+}
+
+function AbsenceBadge({ value, type }: { value: number; type: 'valid' | 'invalid' }) {
+  if (!value) {
+    return <span className="mark mark--empty">—</span>;
+  }
+
+  return <span className={`mark ${type === 'valid' ? 'mark--valid-absence' : 'mark--absence'}`}>{value}</span>;
+}
+
+function ReportAbsenceBadge({ label, value, type }: { label?: string | null; value: number; type: 'valid' | 'invalid' }) {
+  const text = label && label.trim() ? label.trim() : value ? String(value) : '';
+
+  if (!text || text === '0') {
+    return <span className="mark mark--empty">—</span>;
+  }
+
+  const numericValue = Number(text.replace(',', '.'));
+  if (Number.isFinite(numericValue)) {
+    return <span className={`mark ${type === 'valid' ? 'mark--valid-absence' : 'mark--absence'}`}>{text}</span>;
+  }
+
+  return <MarkBadge value={text} />;
+}
+
+function excelColumnToNumber(column: string): number {
+  return column
+    .toUpperCase()
+    .split('')
+    .reduce((sum, char) => sum * 26 + (char.charCodeAt(0) - 64), 0);
+}
+
+function buildSubjectKey(sheetName: string, subjectName: string): string {
+  return `${sheetName}::${subjectName}`;
+}
+
+function buildGradeMap(grades: GradeEntry[]): Map<string, GradeEntry> {
+  return new Map(grades.map((grade) => [`${grade.column}::${grade.label}`, grade]));
+}
+
+function buildSubjectAggregates(data: JournalData): SubjectAggregate[] {
+  const orderMap = new Map(data.subjects.map((subject, index) => [buildSubjectKey(subject.sheetName, subject.subjectName), index]));
+  const map = new Map<string, SubjectAggregate>();
+
+  for (const student of data.students) {
+    for (const subject of student.subjects) {
+      const key = buildSubjectKey(subject.sheetName, subject.subjectName);
+      const current = map.get(key);
+
+      if (!current) {
+        map.set(key, {
+          id: key,
+          sheetName: subject.sheetName,
+          subjectName: subject.subjectName,
+          teacherName: subject.teacherName,
+          students: [],
+          columns: [],
+          lessonTopics: [],
+        });
+      }
+
+      const aggregate = map.get(key)!;
+      if (aggregate.lessonTopics.length === 0 && subject.lessonTopics.length > 0) {
+        aggregate.lessonTopics = subject.lessonTopics;
+      }
+
+      aggregate.students.push({
+        studentId: student.id,
+        studentName: student.name,
+        average: subject.average,
+        absences: subject.absences,
+        grades: subject.grades,
+      });
+
+      for (const grade of subject.grades) {
+        const gradeKey = `${grade.column}::${grade.label}`;
+        if (aggregate.columns.some((column) => column.key === gradeKey)) {
+          continue;
+        }
+
+        aggregate.columns.push({
+          key: gradeKey,
+          column: grade.column,
+          label: grade.label,
+          monthLabel: grade.monthLabel,
+          dayLabel: grade.dayLabel,
+        });
+      }
+    }
+  }
+
+  return [...map.values()]
+    .map((subject) => ({
+      ...subject,
+      students: [...subject.students].sort((a, b) => a.studentId - b.studentId),
+      columns: [...subject.columns].sort((a, b) => excelColumnToNumber(a.column) - excelColumnToNumber(b.column)),
+    }))
+    .sort((a, b) => (orderMap.get(a.id) ?? 9999) - (orderMap.get(b.id) ?? 9999));
+}
+
+function getSubjectDensityClass(columnCount: number): string {
+  if (columnCount >= 22) {
+    return 'subject-table--dense';
+  }
+
+  if (columnCount >= 16) {
+    return 'subject-table--compact';
+  }
+
+  return 'subject-table--regular';
+}
+
+function buildTopicDateMap(lessonTopics: LessonTopic[]): Map<string, LessonTopic[]> {
+  const map = new Map<string, LessonTopic[]>();
+
+  for (const topic of lessonTopics) {
+    const normalizedKey = topic.dateLabel
+      .toLowerCase()
+      .replace(/\\/g, '.')
+      .replace(/\//g, '.')
+      .replace(/-/g, '.')
+      .replace(/\s+/g, '');
+
+    const current = map.get(normalizedKey) ?? [];
+    current.push(topic);
+    map.set(normalizedKey, current);
+  }
+
+  return map;
+}
+
+function normalizeSearchValue(value: string): string {
+  return value.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+}
+
+function getReportCardSubtitle(card: ReportCard): string {
+  return `Средний балл: ${formatAverage(card.overallAverage)} · Уваж.: ${card.totalAbsences.valid || 0} · Неуваж.: ${card.totalAbsences.invalid || 0}`;
+}
+
+export default function Dashboard({ data, backHref, backLabel = 'Все группы' }: DashboardProps) {
+  const subjectAggregates = useMemo(() => buildSubjectAggregates(data), [data]);
+  const groupStats = useMemo(() => computeGroupStats(data), [data]);
+  const [activeTab, setActiveTab] = useState<string>('report-cards');
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [reportSearch, setReportSearch] = useState('');
+  const [reportSort, setReportSort] = useState<ReportSort>('name');
+  const [subjectSort, setSubjectSort] = useState<SubjectSort>('default');
+  const [expandedCards, setExpandedCards] = useState<number[]>([]);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem('journal-theme');
+    if (savedTheme === 'light' || savedTheme === 'dark') {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem('journal-theme', theme);
+  }, [theme]);
+
+  const normalizedSearch = useMemo(() => normalizeSearchValue(reportSearch), [reportSearch]);
+
+  const filteredReportCards = useMemo(() => {
+    if (!normalizedSearch) {
+      return data.reportCards;
+    }
+
+    return data.reportCards.filter((card) => normalizeSearchValue(card.studentName).includes(normalizedSearch));
+  }, [data.reportCards, normalizedSearch]);
+
+  const sortedReportCards = useMemo(() => {
+    const list = [...filteredReportCards];
+    switch (reportSort) {
+      case 'avg-desc':
+        return list.sort((a, b) => compareNullableNumber(a.overallAverage, b.overallAverage, 'desc'));
+      case 'avg-asc':
+        return list.sort((a, b) => compareNullableNumber(a.overallAverage, b.overallAverage, 'asc'));
+      case 'absences':
+        return list.sort((a, b) => (b.totalAbsenceCount || 0) - (a.totalAbsenceCount || 0));
+      case 'name':
+      default:
+        return list.sort((a, b) => a.studentName.localeCompare(b.studentName, 'ru'));
+    }
+  }, [filteredReportCards, reportSort]);
+
+  const selectedSubject = subjectAggregates.find((subject) => subject.id === activeTab) ?? null;
+  const selectedSubjectTopicMap = useMemo(
+    () => (selectedSubject ? buildTopicDateMap(selectedSubject.lessonTopics) : new Map<string, LessonTopic[]>()),
+    [selectedSubject],
+  );
+
+  const sortedSubjectStudents = useMemo(() => {
+    if (!selectedSubject) {
+      return [];
+    }
+
+    const list = [...selectedSubject.students];
+    switch (subjectSort) {
+      case 'name':
+        return list.sort((a, b) => a.studentName.localeCompare(b.studentName, 'ru'));
+      case 'avg-desc':
+        return list.sort((a, b) => compareNullableNumber(a.average, b.average, 'desc'));
+      case 'avg-asc':
+        return list.sort((a, b) => compareNullableNumber(a.average, b.average, 'asc'));
+      case 'absences':
+        return list.sort(
+          (a, b) => (b.absences.valid + b.absences.invalid) - (a.absences.valid + a.absences.invalid),
+        );
+      case 'default':
+      default:
+        return list;
+    }
+  }, [selectedSubject, subjectSort]);
+
+  const toggleReportCard = (studentId: number) => {
+    setExpandedCards((current) =>
+      current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId],
+    );
+  };
+
+  return (
+    <main className="page-shell">
+      <section className="page-header">
+        <div>
+          <div className="eyebrow">Электронный журнал</div>
+          <h1 className="page-title">{data.groupName || 'Группа без названия'}</h1>
+          {backHref ? (
+            <div className="header-actions">
+              <Link href={backHref} className="back-link">
+                ← {backLabel}
+              </Link>
+            </div>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          className="theme-toggle"
+          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+        >
+          {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+        </button>
+      </section>
+
+      <section
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: '10px',
+          marginBottom: '18px',
+        }}
+      >
+        <StatCard label="Студентов" value={String(groupStats.studentCount)} />
+        <StatCard label="Предметов" value={String(groupStats.subjectCount)} />
+        <StatCard
+          label="Средний балл группы"
+          value={formatAverage(groupStats.averageGpa)}
+          tone={groupStats.averageGpa !== null && groupStats.averageGpa >= 4.5 ? 'good' : 'default'}
+        />
+        <StatCard
+          label="Пропуски"
+          value={String(groupStats.validAbsences + groupStats.invalidAbsences)}
+          hint={`Уваж. ${groupStats.validAbsences} · Неуваж. ${groupStats.invalidAbsences}`}
+        />
+        <StatCard
+          label="Требуют внимания"
+          value={String(groupStats.atRiskCount)}
+          hint="Средний балл ниже 3"
+          tone={groupStats.atRiskCount > 0 ? 'warning' : 'good'}
+        />
+      </section>
+
+      <section className="tab-grid">
+        <button
+          type="button"
+          className={`tab-chip ${activeTab === 'report-cards' ? 'tab-chip--active' : ''}`}
+          onClick={() => setActiveTab('report-cards')}
+        >
+          Табели
+        </button>
+        {subjectAggregates.map((subject) => (
+          <button
+            type="button"
+            key={subject.id}
+            className={`tab-chip ${activeTab === subject.id ? 'tab-chip--active' : ''}`}
+            onClick={() => setActiveTab(subject.id)}
+            title={subject.subjectName}
+          >
+            {subject.subjectName}
+          </button>
+        ))}
+      </section>
+
+      {activeTab === 'report-cards' ? (
+        <section className="cards-stack">
+          <div className="toolbar-row">
+            <label className="search-box" htmlFor="report-card-search">
+              <span className="search-box__label">Поиск по имени</span>
+              <input
+                id="report-card-search"
+                className="search-box__input"
+                type="search"
+                placeholder="Например, Иванов"
+                value={reportSearch}
+                onChange={(event) => setReportSearch(event.target.value)}
+              />
+            </label>
+            <label className="search-box" htmlFor="report-card-sort" style={{ minWidth: 'min(100%, 240px)' }}>
+              <span className="search-box__label">Сортировка</span>
+              <select
+                id="report-card-sort"
+                className="search-box__input"
+                value={reportSort}
+                onChange={(event) => setReportSort(event.target.value as ReportSort)}
+              >
+                <option value="name">По фамилии</option>
+                <option value="avg-desc">Средний балл: больше → меньше</option>
+                <option value="avg-asc">Средний балл: меньше → больше</option>
+                <option value="absences">Больше всего пропусков</option>
+              </select>
+            </label>
+            <div className="toolbar-note">Найдено: {sortedReportCards.length}</div>
+          </div>
+
+          {sortedReportCards.map((card) => {
+            const isExpanded = expandedCards.includes(card.studentId);
+            const isAtRisk = isAtRiskAverage(card.overallAverage);
+
+            return (
+              <article
+                className={`sheet-card ${isExpanded ? 'sheet-card--expanded' : ''}`}
+                key={card.studentId}
+                style={isAtRisk ? { borderColor: 'rgba(248, 113, 113, 0.55)' } : undefined}
+              >
+                <button
+                  type="button"
+                  className="sheet-toggle"
+                  onClick={() => toggleReportCard(card.studentId)}
+                  aria-expanded={isExpanded}
+                >
+                  <div className="sheet-toggle__main">
+                    <span className={`sheet-toggle__arrow ${isExpanded ? 'sheet-toggle__arrow--open' : ''}`}>
+                      ▸
+                    </span>
+                    <div>
+                      <div className="sheet-card__title">
+                        {card.studentName}
+                        {isAtRisk ? (
+                          <span
+                            style={{
+                              marginLeft: '8px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: '#fff1f2',
+                              background: 'rgba(244, 63, 94, 0.55)',
+                              borderRadius: '999px',
+                              padding: '2px 8px',
+                              verticalAlign: 'middle',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Внимание
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="sheet-card__meta">{getReportCardSubtitle(card)}</div>
+                    </div>
+                  </div>
+                  <div className="sheet-toggle__aside">Предметов: {card.rows.length}</div>
+                </button>
+
+                {isExpanded ? (
+                  <div className="table-wrap">
+                    <table className="journal-table report-table">
+                      <thead>
+                        <tr>
+                          <th>№</th>
+                          <th>Дисциплина</th>
+                          <th>Сессия</th>
+                          <th>Средний балл</th>
+                          <th>Уваж.</th>
+                          <th>Неуваж.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {card.rows.map((row) => (
+                          <tr key={`${card.studentId}-${row.index}-${row.subjectName}`}>
+                            <td className="center-cell">{row.index}</td>
+                            <td>{row.subjectName}</td>
+                            <td className="center-cell">{row.session ? <MarkBadge value={row.session} /> : '—'}</td>
+                            <td className="center-cell"><MarkBadge value={row.averageLabel ?? row.average} /></td>
+                            <td className="center-cell"><ReportAbsenceBadge label={row.validAbsenceLabel} value={row.absences.valid} type="valid" /></td>
+                            <td className="center-cell"><ReportAbsenceBadge label={row.invalidAbsenceLabel} value={row.absences.invalid} type="invalid" /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colSpan={3}>Итог по табелю</td>
+                          <td className="center-cell"><MarkBadge value={card.overallAverage} /></td>
+                          <td className="center-cell"><AbsenceBadge value={card.totalAbsences.valid} type="valid" /></td>
+                          <td className="center-cell"><AbsenceBadge value={card.totalAbsences.invalid} type="invalid" /></td>
+                        </tr>
+                        <tr>
+                          <td colSpan={5}>Общее количество пропусков</td>
+                          <td className="center-cell"><AbsenceBadge value={card.totalAbsenceCount || 0} type="invalid" /></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+
+          {sortedReportCards.length === 0 ? (
+            <div className="empty-state">Ничего не найдено. Попробуй другое имя или часть фамилии.</div>
+          ) : null}
+        </section>
+      ) : selectedSubject ? (
+        <section className="subject-section">
+          <div className="subject-header">
+            <h2 className="subject-title">{selectedSubject.subjectName}</h2>
+            {selectedSubject.teacherName ? <div className="subject-subtitle">Преподаватель: {selectedSubject.teacherName}</div> : null}
+            {selectedSubject.lessonTopics.length ? (
+              <div className="subject-subtitle">Темы и задания: {selectedSubject.lessonTopics.length}</div>
+            ) : null}
+            <div style={{ marginTop: '12px', maxWidth: '260px' }}>
+              <label className="search-box" htmlFor="subject-sort">
+                <span className="search-box__label">Сортировка студентов</span>
+                <select
+                  id="subject-sort"
+                  className="search-box__input"
+                  value={subjectSort}
+                  onChange={(event) => setSubjectSort(event.target.value as SubjectSort)}
+                >
+                  <option value="default">По журналу</option>
+                  <option value="name">По фамилии</option>
+                  <option value="avg-desc">Средний балл: больше → меньше</option>
+                  <option value="avg-asc">Средний балл: меньше → больше</option>
+                  <option value="absences">Больше всего пропусков</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div className="table-wrap table-wrap--subject">
+            <table
+              className={`journal-table subject-table ${getSubjectDensityClass(selectedSubject.columns.length)}`}
+              style={{ ['--lesson-count' as '--lesson-count']: String(Math.max(selectedSubject.columns.length, 1)) } as CSSProperties}
+            >
+              <thead>
+                <tr>
+                  <th className="sticky-col sticky-col--num">№</th>
+                  <th className="sticky-col sticky-col--name">Обучающийся</th>
+                  {selectedSubject.columns.map((column) => {
+                    const topicKey = String(column.dayLabel || column.label || '')
+                      .toLowerCase()
+                      .replace(/[.,()]/g, '')
+                      .replace(/\\/g, '.')
+                      .replace(/\//g, '.')
+                      .replace(/-/g, '.')
+                      .replace(/\s+/g, '');
+                    const relatedTopics = selectedSubjectTopicMap.get(topicKey) ?? [];
+
+                    return (
+                      <th key={column.key} className="lesson-head">
+                        <div className="lesson-head__day">{column.dayLabel || '—'}</div>
+                        <div className="lesson-head__month">{column.monthLabel || column.label}</div>
+                        {relatedTopics.length ? (
+                          <div className="lesson-head__topic-count">{relatedTopics.length} тема</div>
+                        ) : null}
+                      </th>
+                    );
+                  })}
+                  <th>Средний</th>
+                  <th>Уваж.</th>
+                  <th>Неуваж.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedSubjectStudents.map((student, index) => {
+                  const gradeMap = buildGradeMap(student.grades);
+
+                  return (
+                    <tr key={`${selectedSubject.id}-${student.studentId}`}>
+                      <td className="sticky-col sticky-col--num center-cell">{index + 1}</td>
+                      <td className="sticky-col sticky-col--name">{student.studentName}</td>
+                      {selectedSubject.columns.map((column) => {
+                        const grade = gradeMap.get(column.key);
+                        return (
+                          <td key={`${student.studentId}-${column.key}`} className="center-cell lesson-cell">
+                            {grade ? <MarkBadge value={grade.value} /> : <span className="mark mark--empty mark--ghost">—</span>}
+                          </td>
+                        );
+                      })}
+                      <td className="center-cell"><MarkBadge value={student.average} /></td>
+                      <td className="center-cell"><AbsenceBadge value={student.absences.valid} type="valid" /></td>
+                      <td className="center-cell"><AbsenceBadge value={student.absences.invalid} type="invalid" /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {selectedSubject.lessonTopics.length ? (
+            <section className="lesson-topics">
+              <div className="lesson-topics__header">Темы и задания по занятиям</div>
+              <div className="lesson-topics__list">
+                {selectedSubject.lessonTopics.map((topic) => (
+                  <article className="lesson-topic-card" key={`${selectedSubject.id}-topic-${topic.row}`}>
+                    <div className="lesson-topic-card__date">{topic.dateLabel}</div>
+                    <div className="lesson-topic-card__text">{topic.topic}</div>
+                    {topic.extra ? <div className="lesson-topic-card__extra">{topic.extra}</div> : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </section>
+      ) : null}
+    </main>
+  );
+}
