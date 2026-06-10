@@ -21,3 +21,5 @@ services:
         value: "2"
       - key: JOURNAL_CACHE_DIR
         value: /tmp/journal-cache
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
