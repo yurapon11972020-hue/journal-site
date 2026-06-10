@@ -12,9 +12,10 @@ import {
   studentsScreen,
   subjectDetailScreen,
   subjectsScreen,
+  subjectTopicsScreen,
   type BotScreen,
 } from '@/lib/telegram-views';
-import type { JournalData } from '@/lib/types';
+import type { JournalData, JournalGroupRef } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,8 +36,7 @@ interface TelegramUpdate {
   };
 }
 
-async function loadGroupData(gi: number): Promise<{ data: JournalData; gi: number }> {
-  const groups = await getJournalGroups();
+async function loadGroupData(groups: JournalGroupRef[], gi: number): Promise<{ data: JournalData; gi: number }> {
   const group = groups[gi] ?? groups[0];
   if (!group) {
     throw new Error('Список групп пуст. Проверь ссылку на Яндекс.Диск.');
@@ -47,46 +47,61 @@ async function loadGroupData(gi: number): Promise<{ data: JournalData; gi: numbe
 
 async function buildScreen(action: string): Promise<BotScreen> {
   try {
+    const groups = await getJournalGroups();
+
     if (action === 'grp' || action === 'start') {
-      const groups = await getJournalGroups();
+      // Если группа всего одна — сразу открываем её журнал без лишнего экрана.
+      if (groups.length === 1) {
+        const { data, gi } = await loadGroupData(groups, 0);
+        return groupMenuScreen(data, gi, groups.length);
+      }
       return groupsScreen(groups);
     }
 
-    const [kind, giRaw, extraRaw] = action.split(':');
-    const gi = Number.parseInt(giRaw ?? '0', 10) || 0;
-    const extra = Number.parseInt(extraRaw ?? '0', 10) || 0;
+    const parts = action.split(':');
+    const kind = parts[0];
+    const gi = Number.parseInt(parts[1] ?? '0', 10) || 0;
+    const a = Number.parseInt(parts[2] ?? '0', 10) || 0;
+    const b = Number.parseInt(parts[3] ?? '0', 10) || 0;
 
     switch (kind) {
       case 'g': {
-        const { data } = await loadGroupData(gi);
-        return groupMenuScreen(data, gi);
+        const { data } = await loadGroupData(groups, gi);
+        return groupMenuScreen(data, gi, groups.length);
       }
       case 's': {
-        const { data } = await loadGroupData(gi);
-        return studentsScreen(data, gi, extra);
+        const { data } = await loadGroupData(groups, gi);
+        return studentsScreen(data, gi);
       }
       case 'c': {
-        const { data } = await loadGroupData(gi);
-        return studentCardScreen(data, gi, extra);
+        const { data } = await loadGroupData(groups, gi);
+        return studentCardScreen(data, gi, a);
       }
       case 'n': {
-        const { data } = await loadGroupData(gi);
-        return studentAbsencesScreen(data, gi, extra);
+        const { data } = await loadGroupData(groups, gi);
+        return studentAbsencesScreen(data, gi, a);
       }
       case 'r': {
-        const { data } = await loadGroupData(gi);
+        const { data } = await loadGroupData(groups, gi);
         return ratingScreen(data, gi);
       }
       case 'p': {
-        const { data } = await loadGroupData(gi);
+        const { data } = await loadGroupData(groups, gi);
         return subjectsScreen(data, gi);
       }
       case 'ps': {
-        const { data } = await loadGroupData(gi);
-        return subjectDetailScreen(data, gi, extra);
+        const { data } = await loadGroupData(groups, gi);
+        return subjectDetailScreen(data, gi, a);
+      }
+      case 't': {
+        const { data } = await loadGroupData(groups, gi);
+        return subjectTopicsScreen(data, gi, a, b);
       }
       default: {
-        const groups = await getJournalGroups();
+        if (groups.length === 1) {
+          const { data, gi: safeGi } = await loadGroupData(groups, 0);
+          return groupMenuScreen(data, safeGi, groups.length);
+        }
         return groupsScreen(groups);
       }
     }
