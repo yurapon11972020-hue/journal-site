@@ -2,7 +2,8 @@ const TELEGRAM_API = 'https://api.telegram.org';
 
 export interface InlineButton {
   text: string;
-  callback_data: string;
+  callback_data?: string;
+  web_app?: { url: string };
 }
 
 export function getBotToken(): string {

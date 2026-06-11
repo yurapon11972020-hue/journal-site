@@ -9,6 +9,7 @@ import {
   ratingScreen,
   studentAbsencesScreen,
   studentCardScreen,
+  studentGradesScreen,
   studentsScreen,
   subjectDetailScreen,
   subjectsScreen,
@@ -36,13 +37,13 @@ interface TelegramUpdate {
   };
 }
 
-async function loadGroupData(groups: JournalGroupRef[], gi: number): Promise<{ data: JournalData; gi: number }> {
+async function loadGroupData(groups: JournalGroupRef[], gi: number): Promise<{ data: JournalData; gi: number; group: JournalGroupRef }> {
   const group = groups[gi] ?? groups[0];
   if (!group) {
     throw new Error('Список групп пуст. Проверь ссылку на Яндекс.Диск.');
   }
   const data = await getJournalDataByPath(group.filePath);
-  return { data, gi: groups[gi] ? gi : 0 };
+  return { data, gi: groups[gi] ? gi : 0, group };
 }
 
 async function buildScreen(action: string): Promise<BotScreen> {
@@ -52,8 +53,8 @@ async function buildScreen(action: string): Promise<BotScreen> {
     if (action === 'grp' || action === 'start') {
       // Если группа всего одна — сразу открываем её журнал без лишнего экрана.
       if (groups.length === 1) {
-        const { data, gi } = await loadGroupData(groups, 0);
-        return groupMenuScreen(data, gi, groups.length);
+        const { data, gi, group } = await loadGroupData(groups, 0);
+        return groupMenuScreen(data, gi, groups.length, group);
       }
       return groupsScreen(groups);
     }
@@ -66,8 +67,8 @@ async function buildScreen(action: string): Promise<BotScreen> {
 
     switch (kind) {
       case 'g': {
-        const { data } = await loadGroupData(groups, gi);
-        return groupMenuScreen(data, gi, groups.length);
+        const { data, group } = await loadGroupData(groups, gi);
+        return groupMenuScreen(data, gi, groups.length, group);
       }
       case 's': {
         const { data } = await loadGroupData(groups, gi);
@@ -76,6 +77,10 @@ async function buildScreen(action: string): Promise<BotScreen> {
       case 'c': {
         const { data } = await loadGroupData(groups, gi);
         return studentCardScreen(data, gi, a);
+      }
+      case 'm': {
+        const { data } = await loadGroupData(groups, gi);
+        return studentGradesScreen(data, gi, a);
       }
       case 'n': {
         const { data } = await loadGroupData(groups, gi);
@@ -99,8 +104,8 @@ async function buildScreen(action: string): Promise<BotScreen> {
       }
       default: {
         if (groups.length === 1) {
-          const { data, gi: safeGi } = await loadGroupData(groups, 0);
-          return groupMenuScreen(data, safeGi, groups.length);
+          const { data, gi: safeGi, group } = await loadGroupData(groups, 0);
+          return groupMenuScreen(data, safeGi, groups.length, group);
         }
         return groupsScreen(groups);
       }

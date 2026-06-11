@@ -1,5 +1,6 @@
-import type { JournalData, JournalGroupRef, ReportCard, StudentRecord, SubjectSummary } from '@/lib/types';
+import { groupPathToId } from '@/lib/group-files';
 import { escapeHtml, type InlineButton } from '@/lib/telegram';
+import type { JournalData, JournalGroupRef, ReportCard, StudentRecord, SubjectSummary } from '@/lib/types';
 
 const MAX_TEXT_LENGTH = 3800;
 const TOPICS_PER_PAGE = 6;
@@ -7,6 +8,26 @@ const TOPICS_PER_PAGE = 6;
 export interface BotScreen {
   text: string;
   buttons: InlineButton[][];
+}
+
+function getSiteBaseUrl(): string | null {
+  const raw = process.env.RENDER_EXTERNAL_URL?.trim() || process.env.PUBLIC_SITE_URL?.trim() || '';
+  if (!raw) {
+    return null;
+  }
+  const withProto = raw.startsWith('http') ? raw : `https://${raw}`;
+  return withProto.replace(/\/+$/, '');
+}
+
+function groupWebAppUrl(group: JournalGroupRef | undefined): string | null {
+  const base = getSiteBaseUrl();
+  if (!base) {
+    return null;
+  }
+  if (!group) {
+    return base;
+  }
+  return `${base}/group/${groupPathToId(group.filePath)}`;
 }
 
 function formatAvg(value: number | null): string {
@@ -72,7 +93,7 @@ export function groupsScreen(groups: JournalGroupRef[]): BotScreen {
   return { text: '📖 <b>Электронный журнал</b>\n\nВыбери группу:', buttons };
 }
 
-export function groupMenuScreen(data: JournalData, gi: number, totalGroups: number): BotScreen {
+export function groupMenuScreen(data: JournalData, gi: number, totalGroups: number, group?: JournalGroupRef): BotScreen {
   const averages = data.students.map((s) => s.overallAverage).filter((v): v is number => v !== null);
   const groupAvg = averages.length ? Math.round((averages.reduce((sum, v) => sum + v, 0) / averages.length) * 100) / 100 : null;
   const totalValid = data.students.reduce((sum, s) => sum + s.totalAbsences.valid, 0);
@@ -87,13 +108,18 @@ export function groupMenuScreen(data: JournalData, gi: number, totalGroups: numb
     `🚫 Пропуски: <b>Н:${totalInvalid}</b> • <b>НУ:${totalValid}</b>`,
   ].join('\n');
 
-  const buttons: InlineButton[][] = [
-    [{ text: '👥 Студенты', callback_data: `s:${gi}` }],
-    [
-      { text: '🏆 Рейтинг', callback_data: `r:${gi}` },
-      { text: '📚 Предметы', callback_data: `p:${gi}` },
-    ],
-  ];
+  const buttons: InlineButton[][] = [];
+
+  const webAppUrl = groupWebAppUrl(group);
+  if (webAppUrl) {
+    buttons.push([{ text: '🌐 Открыть полный журнал', web_app: { url: webAppUrl } }]);
+  }
+
+  buttons.push([{ text: '👥 Студенты', callback_data: `s:${gi}` }]);
+  buttons.push([
+    { text: '🏆 Рейтинг', callback_data: `r:${gi}` },
+    { text: '📚 Предметы', callback_data: `p:${gi}` },
+  ]);
 
   if (totalGroups > 1) {
     buttons.push([{ text: '⬅️ К группам', callback_data: 'grp' }]);
@@ -168,9 +194,42 @@ export function studentCardScreen(data: JournalData, gi: number, studentId: numb
   lines.push(`🚫 Пропуски: <b>Н:${totalInvalid}</b> • <b>НУ:${totalValid}</b>`);
 
   const buttons: InlineButton[][] = [
+    [{ text: '📝 Все оценки', callback_data: `m:${gi}:${studentId}` }],
     [{ text: '📅 Пропуски по датам', callback_data: `n:${gi}:${studentId}` }],
     [{ text: '⬅️ К студентам', callback_data: `s:${gi}` }],
   ];
+
+  return { text: clampText(lines.join('\n')), buttons };
+}
+
+export function studentGradesScreen(data: JournalData, gi: number, studentId: number): BotScreen {
+  const student = findStudent(data, studentId);
+  const name = student?.name || 'Студент';
+  const lines: string[] = [`📝 <b>Оценки — ${escapeHtml(name)}</b>`, '━━━━━━━━━━━━━━━'];
+
+  let found = false;
+
+  if (student) {
+    for (const subject of student.subjects) {
+      if (!subject.grades.length) {
+        continue;
+      }
+
+      found = true;
+      // Показываем отметки ровно так, как они стоят в Excel-журнале.
+      const marks = subject.grades.map((grade) => grade.value).join(' · ');
+      lines.push('');
+      lines.push(`📕 <b>${escapeHtml(subject.subjectName)}</b>`);
+      lines.push(escapeHtml(marks));
+    }
+  }
+
+  if (!found) {
+    lines.push('');
+    lines.push('Записей в журнале пока нет.');
+  }
+
+  const buttons: InlineButton[][] = [[{ text: '⬅️ К табелю', callback_data: `c:${gi}:${studentId}` }]];
 
   return { text: clampText(lines.join('\n')), buttons };
 }
