@@ -16,10 +16,16 @@ services:
       - key: YANDEX_DISK_PUBLIC_URL
         value: https://disk.yandex.ru/i/sGTYC8nUWYAsRw
       - key: JOURNAL_CACHE_INTERVAL_MINUTES
-        value: "30"
+        value: "5"
       - key: JOURNAL_CACHE_MAX_FILES
         value: "2"
       - key: JOURNAL_CACHE_DIR
         value: /tmp/journal-cache
+      - key: JOURNAL_REFRESH_FROM_HOUR
+        value: "5"
+      - key: JOURNAL_REFRESH_TO_HOUR
+        value: "24"
+      - key: JOURNAL_TIMEZONE_OFFSET_HOURS
+        value: "5"
       - key: TELEGRAM_BOT_TOKEN
         sync: false

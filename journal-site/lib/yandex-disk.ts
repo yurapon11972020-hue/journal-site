@@ -105,6 +105,33 @@ function getPublicCacheMaxFiles(): number {
   return Math.max(1, Math.floor(getPositiveNumberFromEnv('JOURNAL_CACHE_MAX_FILES', DEFAULT_PUBLIC_CACHE_MAX_FILES)));
 }
 
+function getHourFromEnv(name: string, fallback: number): number {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    return fallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+// Окно, в которое журнал обновляется с Яндекс.Диска (по местному времени).
+// Вне окна сайт и бот отдают последнюю скачанную копию.
+function isWithinRefreshWindow(date = new Date()): boolean {
+  const from = Math.min(23, Math.max(0, Math.floor(getHourFromEnv('JOURNAL_REFRESH_FROM_HOUR', 5))));
+  const to = Math.min(24, Math.max(1, Math.floor(getHourFromEnv('JOURNAL_REFRESH_TO_HOUR', 24))));
+  const offsetHours = getHourFromEnv('JOURNAL_TIMEZONE_OFFSET_HOURS', 5);
+
+  const localHour = (((date.getUTCHours() + offsetHours) % 24) + 24) % 24;
+
+  if (from === to) {
+    return true;
+  }
+  if (from < to) {
+    return localHour >= from && localHour < to;
+  }
+  return localHour >= from || localHour < to;
+}
+
 function getPublicCacheDir(): string {
   const configuredDir = process.env.JOURNAL_CACHE_DIR?.trim() || './.journal-cache';
   return path.isAbsolute(configuredDir) ? configuredDir : path.join(process.cwd(), configuredDir);
@@ -468,7 +495,7 @@ async function ensureFreshCachedPublicJournal(options: { force?: boolean } = {})
   await fs.mkdir(cacheDir, { recursive: true });
 
   const latest = await getValidLatestCachedVersion(cacheDir, publicKey, publicPath);
-  if (!options.force && latest && shouldUseCachedVersion(latest, intervalMs)) {
+  if (!options.force && latest && (shouldUseCachedVersion(latest, intervalMs) || !isWithinRefreshWindow())) {
     return latest;
   }
 
@@ -491,6 +518,9 @@ function startPublicCacheRefreshLoop(): void {
 
   const intervalMs = getPublicCacheIntervalMs();
   runtime.interval = setInterval(() => {
+    if (!isWithinRefreshWindow()) {
+      return;
+    }
     void ensureFreshCachedPublicJournal({ force: true }).catch((error) => {
       console.error('[journal-cache] Не удалось обновить журнал:', error);
     });
