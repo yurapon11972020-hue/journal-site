@@ -535,7 +535,20 @@ export async function startJournalCache(): Promise<void> {
   }
 
   startPublicCacheRefreshLoop();
-  await ensureFreshCachedPublicJournal({ force: true });
+
+  // Стартовая загрузка с повторами: сеть при старте сервера иногда недоступна пару секунд.
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await ensureFreshCachedPublicJournal({ force: true });
+      return;
+    } catch (error) {
+      if (attempt === 3) {
+        throw error;
+      }
+      console.error(`[journal-cache] Стартовая загрузка, попытка ${attempt} не удалась, повтор через 5 секунд...`);
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+    }
+  }
 }
 
 async function readFromCachedPublicYandexDisk(): Promise<JournalFileResult> {

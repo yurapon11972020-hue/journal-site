@@ -85,6 +85,35 @@ function absenceKind(value: string): 'Н' | 'НУ' | 'ЭН' | null {
   return null;
 }
 
+// Средний балл и пропуски берём из листа «Табели» — как в основном журнале.
+// Табель ищем по фамилии (номера могут не совпадать, если имя в табеле записано иначе).
+function normName(value: string): string {
+  return value
+    .replace(/\u00a0/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s+/g, ' ');
+}
+
+function cardForStudent(data: JournalData, student: StudentRecord): ReportCard | null {
+  const target = normName(student.name);
+  const byName = data.reportCards.find((card) => normName(card.studentName) === target);
+  if (byName) {
+    return byName;
+  }
+  return data.reportCards.find((card) => card.studentId === student.id) ?? null;
+}
+
+function studentDisplayStats(data: JournalData, student: StudentRecord): { avg: number | null; invalid: number; valid: number } {
+  const card = cardForStudent(data, student);
+  return {
+    avg: card?.overallAverage ?? student.overallAverage,
+    invalid: card?.totalAbsences.invalid ?? student.totalAbsences.invalid,
+    valid: card?.totalAbsences.valid ?? student.totalAbsences.valid,
+  };
+}
+
 export function groupsScreen(groups: JournalGroupRef[]): BotScreen {
   const buttons: InlineButton[][] = groups.map((group, index) => [
     { text: `🎓 ${group.groupName}`, callback_data: `g:${index}` },
@@ -94,10 +123,11 @@ export function groupsScreen(groups: JournalGroupRef[]): BotScreen {
 }
 
 export function groupMenuScreen(data: JournalData, gi: number, totalGroups: number, group?: JournalGroupRef): BotScreen {
-  const averages = data.students.map((s) => s.overallAverage).filter((v): v is number => v !== null);
+  const stats = data.students.map((student) => studentDisplayStats(data, student));
+  const averages = stats.map((s) => s.avg).filter((v): v is number => v !== null);
   const groupAvg = averages.length ? Math.round((averages.reduce((sum, v) => sum + v, 0) / averages.length) * 100) / 100 : null;
-  const totalValid = data.students.reduce((sum, s) => sum + s.totalAbsences.valid, 0);
-  const totalInvalid = data.students.reduce((sum, s) => sum + s.totalAbsences.invalid, 0);
+  const totalValid = stats.reduce((sum, s) => sum + s.valid, 0);
+  const totalInvalid = stats.reduce((sum, s) => sum + s.invalid, 0);
 
   const text = [
     `🎓 <b>${escapeHtml(data.groupName || 'Группа')}</b>`,
@@ -132,11 +162,12 @@ export function studentsScreen(data: JournalData, gi: number): BotScreen {
   const sorted = [...data.students].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
 
   const buttons: InlineButton[][] = sorted.map((student) => {
-    const abs = absencePair(student.totalAbsences.invalid, student.totalAbsences.valid);
+    const stats = studentDisplayStats(data, student);
+    const abs = absencePair(stats.invalid, stats.valid);
     const absPart = abs ? ` • ${abs}` : '';
     return [
       {
-        text: `${avgEmoji(student.overallAverage)} ${shortName(student.name)} • ${formatAvg(student.overallAverage)}${absPart}`,
+        text: `${avgEmoji(stats.avg)} ${shortName(student.name)} • ${formatAvg(stats.avg)}${absPart}`,
         callback_data: `c:${gi}:${student.id}`,
       },
     ];
@@ -162,9 +193,9 @@ function findStudent(data: JournalData, studentId: number): StudentRecord | null
 }
 
 export function studentCardScreen(data: JournalData, gi: number, studentId: number): BotScreen {
-  const card = findCard(data, studentId);
   const student = findStudent(data, studentId);
-  const name = card?.studentName || student?.name || 'Студент';
+  const card = student ? cardForStudent(data, student) : findCard(data, studentId);
+  const name = student?.name || card?.studentName || 'Студент';
 
   const lines: string[] = [`👤 <b>${escapeHtml(name)}</b>`, '━━━━━━━━━━━━━━━'];
 
@@ -273,20 +304,18 @@ export function studentAbsencesScreen(data: JournalData, gi: number, studentId: 
 }
 
 export function ratingScreen(data: JournalData, gi: number): BotScreen {
-  const rated = [...data.students].sort((a, b) => {
-    const aAvg = a.overallAverage ?? -1;
-    const bAvg = b.overallAverage ?? -1;
-    return bAvg - aAvg;
-  });
+  const rated = data.students
+    .map((student) => ({ student, stats: studentDisplayStats(data, student) }))
+    .sort((a, b) => (b.stats.avg ?? -1) - (a.stats.avg ?? -1));
 
   const medals = ['🥇', '🥈', '🥉'];
   const lines: string[] = [`🏆 <b>Рейтинг — ${escapeHtml(data.groupName || 'группа')}</b>`, '━━━━━━━━━━━━━━━'];
 
-  rated.forEach((student, index) => {
+  rated.forEach(({ student, stats }, index) => {
     const place = medals[index] || `${index + 1}.`;
-    const abs = absencePair(student.totalAbsences.invalid, student.totalAbsences.valid);
+    const abs = absencePair(stats.invalid, stats.valid);
     const absPart = abs ? ` • ${abs}` : '';
-    lines.push(`${place} ${escapeHtml(shortName(student.name))} — <b>${formatAvg(student.overallAverage)}</b>${absPart}`);
+    lines.push(`${place} ${escapeHtml(shortName(student.name))} — <b>${formatAvg(stats.avg)}</b>${absPart}`);
   });
 
   const buttons: InlineButton[][] = [[{ text: '⬅️ Назад', callback_data: `g:${gi}` }]];
