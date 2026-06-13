@@ -391,13 +391,24 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-        >
-          {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <a
+            href="https://t.me/SKIBJOURNAL_BOT"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="theme-toggle"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}
+          >
+            <span aria-hidden>✈️</span> Телеграм-бот
+          </a>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+          >
+            {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+          </button>
+        </div>
       </section>
 
       <section
