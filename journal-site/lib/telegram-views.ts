@@ -39,8 +39,8 @@ function formatAvg(value: number | null): string {
 
 function avgEmoji(value: number | null): string {
   if (value === null) return '⚪';
-  if (value >= 3.5) return '🟢';
-  if (value >= 2.5) return '🟡';
+  if (value >= 4) return '🟢';
+  if (value >= 3) return '🟡';
   return '🔴';
 }
 
