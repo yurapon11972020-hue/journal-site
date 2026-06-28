@@ -1,0 +1,233 @@
+/* ============================================================
+   Зимний редизайн. Подключается ПОСЛЕ globals.css и только
+   дополняет/переопределяет — таблицы журнала не затрагиваются.
+   ============================================================ */
+
+/* Палитра под фото: ночное небо, лёд, снег, тёплый кирпич */
+:root,
+html[data-theme='dark'] {
+  --bg: #0a1120;
+  --panel: #131f37;
+  --panel-alt: #1a2842;
+  --border: #2a3c5b;
+  --text: #eef4ff;
+  --muted: #9aabc9;
+  --accent: #5aa2ff;
+  --accent-strong: #a7c8ff;
+  --brick: #e8915a;
+  --shadow: 0 18px 50px rgba(2, 8, 22, 0.45);
+  --font-display: 'Unbounded', 'Manrope', system-ui, sans-serif;
+  --font-body: 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+html[data-theme='light'] {
+  --bg: #e9f0f8;
+  --panel: #ffffff;
+  --panel-alt: #f3f7fc;
+  --border: #d2ddec;
+  --text: #122036;
+  --muted: #5a6d89;
+  --accent: #2767cf;
+  --accent-strong: #1a4aa0;
+  --brick: #c2632f;
+  --shadow: 0 18px 44px rgba(30, 52, 92, 0.12);
+}
+
+body {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* ---------------- Hero на главной ---------------- */
+.hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 304px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.hero__img {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 58%;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    rgba(6, 12, 26, 0.12) 0%,
+    rgba(6, 12, 26, 0.55) 58%,
+    rgba(6, 12, 26, 0.9) 100%
+  );
+}
+
+.hero__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px;
+}
+
+.hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.hero__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.hero__btn:hover {
+  background: rgba(255, 255, 255, 0.24);
+  transform: translateY(-1px);
+}
+
+.hero__content {
+  padding: 18px 22px 26px;
+}
+
+.hero__title {
+  font-family: var(--font-display);
+  margin: 0;
+  color: #fff;
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  font-weight: 700;
+  line-height: 1.03;
+  letter-spacing: -0.015em;
+  text-shadow: 0 2px 28px rgba(0, 0, 0, 0.4);
+}
+
+.hero__subtitle {
+  margin: 12px 0 0;
+  max-width: 52ch;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: clamp(0.95rem, 2.2vw, 1.1rem);
+  line-height: 1.5;
+}
+
+/* ---------------- Карточки групп ---------------- */
+.tab-grid {
+  gap: 12px;
+}
+
+.tab-chip--link {
+  position: relative;
+  justify-content: flex-start;
+  text-align: left;
+  min-height: 66px;
+  padding: 16px 42px 16px 22px;
+  border-radius: 16px;
+  font-weight: 600;
+  font-size: 1.05rem;
+  overflow: hidden;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.tab-chip--link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+}
+
+.tab-chip--link::after {
+  content: '→';
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent);
+  font-size: 1.15rem;
+  opacity: 0;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.tab-chip--link:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.tab-chip--link:hover::after {
+  opacity: 1;
+  transform: translate(4px, -50%);
+}
+
+/* ---------------- Доступность / мобильные ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .hero__btn,
+  .tab-chip--link,
+  .tab-chip--link::after {
+    transition: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    min-height: 244px;
+    border-radius: 18px;
+  }
+  .hero__title {
+    font-size: clamp(1.7rem, 8.5vw, 2.4rem);
+  }
+  .hero__content {
+    padding: 16px 16px 20px;
+  }
+}

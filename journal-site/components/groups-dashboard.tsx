@@ -26,31 +26,36 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
 
   return (
     <main className="page-shell">
-      <section className="page-header">
-        <div>
-          <div className="eyebrow">Электронный журнал колледжа</div>
-          <h1 className="page-title">Выбор группы</h1>
-          <p className="page-subtitle">Выбери группу — сайт загрузит нужный Excel-файл с Яндекс Диска.</p>
+      <header className="hero">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/hero.jpg" alt="Зимний вид города" className="hero__img" />
+        <div className="hero__top">
+          <span className="hero__badge">❄️ Электронный журнал</span>
+          <div className="hero__actions">
+            <a
+              href="https://t.me/SKIBJOURNAL_BOT"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hero__btn"
+            >
+              ✈️ Бот
+            </a>
+            <button
+              type="button"
+              className="hero__btn"
+              onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            >
+              {theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная'}
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <a
-            href="https://t.me/SKIBJOURNAL_BOT"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="theme-toggle"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}
-          >
-            <span aria-hidden>✈️</span> Телеграм-бот
-          </a>
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-          >
-            {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-          </button>
+        <div className="hero__content">
+          <h1 className="hero__title">Журнал группы</h1>
+          <p className="hero__subtitle">
+            Выбери группу — откроется журнал с оценками, пропусками и темами занятий.
+          </p>
         </div>
-      </section>
+      </header>
 
       <section className="tab-grid">
         {groups.map((group) => (
