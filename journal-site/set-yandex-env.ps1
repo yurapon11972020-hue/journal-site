@@ -15,8 +15,8 @@ while ($true) {
 }
 
 if ($links.Count -eq 0) {
-  $links = @("https://disk.yandex.ru/i/jr0lr00cUQp0FQ")
-  Write-Host "Ссылки не введены, беру ссылку журнала по умолчанию." -ForegroundColor Yellow
+  $links = @("https://disk.yandex.ru/i/jr0lr00cUQp0FQ", "https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg")
+  Write-Host "Ссылки не введены, беру ссылки журналов по умолчанию." -ForegroundColor Yellow
 }
 
 $minutes = Read-Host "Интервал обновления в минутах (по умолчанию 30)"
