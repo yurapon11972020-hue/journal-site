@@ -13,8 +13,11 @@ services:
         value: "1"
       - key: JOURNAL_SOURCE
         value: yandex-public-cache
-      - key: YANDEX_DISK_PUBLIC_URL
-        value: https://disk.yandex.ru/i/sGTYC8nUWYAsRw
+      # Список групп: одна ссылка = одна группа, ссылка на папку = все Excel внутри.
+      # Несколько групп пишутся через запятую или с новой строки,
+      # можно задать своё название: "ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА".
+      - key: YANDEX_DISK_PUBLIC_URLS
+        value: https://disk.yandex.ru/i/jr0lr00cUQp0FQ
       - key: JOURNAL_CACHE_INTERVAL_MINUTES
         value: "5"
       - key: JOURNAL_CACHE_MAX_FILES

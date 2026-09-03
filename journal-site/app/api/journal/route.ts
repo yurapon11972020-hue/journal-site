@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 
-import { getJournalData } from '@/lib/journal';
+import { getJournalData, getJournalDataByGroupId } from '@/lib/journal';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const data = await getJournalData();
+    // /api/journal — первая группа, /api/journal?group=<id> — конкретная группа.
+    const groupId = new URL(request.url).searchParams.get('group')?.trim();
+    const data = groupId ? await getJournalDataByGroupId(groupId) : await getJournalData();
     return NextResponse.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

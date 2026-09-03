@@ -18,6 +18,15 @@ declare global {
   var __journalRuntimeCache: JournalRuntimeCache | undefined;
 }
 
+// Сколько разобранных журналов держим в памяти одновременно.
+// При нескольких группах имеет смысл держать больше одной, но не все сразу:
+// каждый разобранный журнал занимает память.
+function getParsedCacheLimit(): number {
+  const raw = process.env.JOURNAL_PARSED_CACHE_SIZE?.trim();
+  const parsed = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 4;
+}
+
 function getRuntimeCache(): JournalRuntimeCache {
   globalThis.__journalRuntimeCache ??= {
     parsed: new Map<string, ParsedJournalCacheEntry>(),
@@ -63,7 +72,7 @@ async function getParsedJournalFromFile(file: JournalFileResult): Promise<Journa
         createdAt: Date.now(),
       });
 
-      while (cache.parsed.size > 4) {
+      while (cache.parsed.size > getParsedCacheLimit()) {
         const oldestKey = cache.parsed.keys().next().value;
         if (!oldestKey) {
           break;
@@ -112,4 +121,9 @@ export async function getJournalData(): Promise<JournalData> {
 export async function getJournalDataByGroupId(groupId: string): Promise<JournalData> {
   const filePath = idToGroupPath(groupId);
   return getJournalDataByPath(filePath);
+}
+
+export async function findJournalGroupById(groupId: string): Promise<JournalGroupRef | null> {
+  const groups = await listJournalFiles();
+  return groups.find((group) => group.id === groupId) ?? null;
 }

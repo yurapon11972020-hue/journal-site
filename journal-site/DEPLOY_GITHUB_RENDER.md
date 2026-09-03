@@ -53,12 +53,15 @@ git push -u origin main
 NODE_VERSION=20.11.1
 NEXT_TELEMETRY_DISABLED=1
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URL=https://disk.yandex.ru/i/sGTYC8nUWYAsRw
-YANDEX_DISK_PUBLIC_PATH=
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=/tmp/journal-cache
 ```
+
+`YANDEX_DISK_PUBLIC_URLS` — список групп. Несколько ссылок разделяются запятой или переносом строки,
+ссылка на папку разворачивается во все Excel-файлы внутри.
+Как добавлять группы и что проверять — в [`SETUP_GROUPS.md`](./SETUP_GROUPS.md).
 
 6. Нажми **Create Web Service**.
 

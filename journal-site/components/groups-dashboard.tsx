@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { JournalGroupRef } from '@/lib/types';
 
@@ -9,8 +9,29 @@ interface GroupsDashboardProps {
   groups: JournalGroupRef[];
 }
 
+// Начиная с этого количества групп показываем поиск по списку.
+const SEARCH_THRESHOLD = 8;
+
+function normalize(value: string): string {
+  return value.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+}
+
+function groupsWord(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+
+  if (mod10 === 1 && mod100 !== 11) {
+    return 'группа';
+  }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return 'группы';
+  }
+  return 'групп';
+}
+
 export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem('journal-theme');
@@ -23,6 +44,19 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem('journal-theme', theme);
   }, [theme]);
+
+  const showSearch = groups.length >= SEARCH_THRESHOLD;
+
+  const visibleGroups = useMemo(() => {
+    const needle = normalize(query);
+    if (!needle) {
+      return groups;
+    }
+
+    return groups.filter(
+      (group) => normalize(group.groupName).includes(needle) || normalize(group.fileName).includes(needle),
+    );
+  }, [groups, query]);
 
   return (
     <main className="page-shell">
@@ -50,20 +84,50 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
           </div>
         </div>
         <div className="hero__content">
-          <h1 className="hero__title">Журнал группы</h1>
+          <h1 className="hero__title">{groups.length === 1 ? 'Журнал группы' : 'Журналы групп'}</h1>
           <p className="hero__subtitle">
             Выбери группу — откроется журнал с оценками, пропусками и темами занятий.
           </p>
         </div>
       </header>
 
-      <section className="tab-grid">
-        {groups.map((group) => (
-          <Link key={group.id} href={`/group/${group.id}`} className="tab-chip tab-chip--link" title={group.groupName}>
-            {group.groupName}
-          </Link>
-        ))}
-      </section>
+      <div className="groups-toolbar">
+        <span className="groups-count">
+          {groups.length} {groupsWord(groups.length)}
+        </span>
+        {showSearch ? (
+          <input
+            type="search"
+            className="groups-search"
+            placeholder="Поиск группы"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Поиск группы"
+          />
+        ) : null}
+      </div>
+
+      {visibleGroups.length ? (
+        <section className="tab-grid">
+          {visibleGroups.map((group) => (
+            <Link
+              key={group.id}
+              href={`/group/${group.id}`}
+              className="tab-chip tab-chip--link group-card"
+              title={group.fileName}
+            >
+              <span className="group-card__name">{group.groupName}</span>
+              {group.fileName && group.fileName !== group.groupName ? (
+                <span className="group-card__meta">{group.fileName}</span>
+              ) : null}
+            </Link>
+          ))}
+        </section>
+      ) : (
+        <section className="groups-empty">
+          {groups.length ? 'Ничего не нашлось. Проверь написание.' : 'Список групп пуст — проверь ссылки на Яндекс.Диск.'}
+        </section>
+      )}
     </main>
   );
 }
