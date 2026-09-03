@@ -232,6 +232,37 @@ function dedupePublicSources(sources: PublicSourceConfig[]): PublicSourceConfig[
  * Список публичных ссылок из переменных окружения.
  * Приоритет: YANDEX_DISK_PUBLIC_URLS (много ссылок) → YANDEX_DISK_PUBLIC_URL (одна ссылка).
  */
+/** Из какой переменной окружения реально взяты ссылки — нужно для понятных сообщений об ошибках. */
+function getActivePublicSourceEnvName(): string {
+  if (process.env.YANDEX_DISK_PUBLIC_URLS?.trim() || process.env.YANDEX_DISK_PUBLIC_KEYS?.trim()) {
+    return 'YANDEX_DISK_PUBLIC_URLS';
+  }
+  if (process.env.YANDEX_DISK_PUBLIC_URL?.trim() || process.env.YANDEX_DISK_PUBLIC_KEY?.trim()) {
+    return 'YANDEX_DISK_PUBLIC_URL';
+  }
+  return 'YANDEX_DISK_PUBLIC_URLS';
+}
+
+export function getPublicSourcesInfo(): { variable: string; linkCount: number } {
+  try {
+    return { variable: getActivePublicSourceEnvName(), linkCount: getPublicSources().length };
+  } catch {
+    return { variable: getActivePublicSourceEnvName(), linkCount: 0 };
+  }
+}
+
+/** Хвост публичной ссылки — чтобы в списке было видно, какая именно ссылка не открылась. */
+function publicKeyHint(publicKey: string): string {
+  const cleaned = publicKey.replace(/[?#].*$/, '').replace(/\/+$/, '');
+  const tail = cleaned.split('/').filter(Boolean).at(-1);
+  return tail || 'journal';
+}
+
+function describePublicTarget(group: Pick<PublicGroupSource, 'publicKey' | 'publicPath'>): string {
+  const where = group.publicPath ? ` (файл ${group.publicPath} внутри папки)` : '';
+  return `${group.publicKey}${where}`;
+}
+
 function getPublicSources(): PublicSourceConfig[] {
   const many = process.env.YANDEX_DISK_PUBLIC_URLS?.trim() || process.env.YANDEX_DISK_PUBLIC_KEYS?.trim();
 
@@ -652,7 +683,9 @@ async function resolvePublicGroupsFromNetwork(cached: PublicGroupsCacheMeta | nu
       publicKey: source.publicKey,
       publicPath: source.publicPath,
       label: source.label,
-      fileName: meta?.name || (source.publicPath ? basenameFromFilePath(source.publicPath) : 'journal.xlsx'),
+      fileName:
+        meta?.name ||
+        (source.publicPath ? basenameFromFilePath(source.publicPath) : `${publicKeyHint(source.publicKey)}.xlsx`),
     });
   }
 
@@ -793,7 +826,14 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
   const cachedFilePath = path.join(cacheDir, cachedFileName);
   const tempFilePath = `${cachedFilePath}.tmp`;
 
-  const buffer = await getPublicDownloadBuffer(group.publicKey, group.publicPath);
+  const buffer = await getPublicDownloadBuffer(group.publicKey, group.publicPath).catch((error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${reason} Ссылка: ${describePublicTarget(group)}. ` +
+        `Ссылки берутся из переменной ${getActivePublicSourceEnvName()}. ` +
+        'Проверь, что публичный доступ к файлу включён и ссылка не была пересоздана.',
+    );
+  });
   await fs.writeFile(tempFilePath, buffer);
   await fs.rename(tempFilePath, cachedFilePath);
 
