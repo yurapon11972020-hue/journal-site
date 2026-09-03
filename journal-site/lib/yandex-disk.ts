@@ -263,35 +263,46 @@ function describePublicTarget(group: Pick<PublicGroupSource, 'publicKey' | 'publ
   return `${group.publicKey}${where}`;
 }
 
+function parsePublicSourceList(raw: string): PublicSourceConfig[] {
+  return raw
+    .split(/[\n\r,;]+/)
+    .map((entry) => parsePublicSourceEntry(entry))
+    .filter((entry): entry is PublicSourceConfig => Boolean(entry));
+}
+
+/**
+ * Список публичных ссылок из переменных окружения.
+ * Приоритет: YANDEX_DISK_PUBLIC_URLS → YANDEX_DISK_PUBLIC_URL.
+ * Список ссылок понимается в обеих переменных: если в старую одиночную
+ * переменную вписали несколько ссылок через запятую, это тоже сработает.
+ */
 function getPublicSources(): PublicSourceConfig[] {
   const many = process.env.YANDEX_DISK_PUBLIC_URLS?.trim() || process.env.YANDEX_DISK_PUBLIC_KEYS?.trim();
-
-  if (many) {
-    const sources = many
-      .split(/[\n\r,;]+/)
-      .map((entry) => parsePublicSourceEntry(entry))
-      .filter((entry): entry is PublicSourceConfig => Boolean(entry));
-
-    if (sources.length) {
-      return dedupePublicSources(sources);
-    }
-  }
-
   const single = process.env.YANDEX_DISK_PUBLIC_URL?.trim() || process.env.YANDEX_DISK_PUBLIC_KEY?.trim();
+  const raw = many || single;
 
-  if (single) {
-    return [
-      {
-        publicKey: single,
-        publicPath: getPublicPath(),
-        label: process.env.YANDEX_DISK_PUBLIC_LABEL?.trim() || undefined,
-      },
-    ];
+  if (!raw) {
+    throw new Error(
+      'Не задана ни одна публичная ссылка. Укажи YANDEX_DISK_PUBLIC_URLS — одна ссылка на группу, несколько ссылок через запятую.',
+    );
   }
 
-  throw new Error(
-    'Не задана ни одна публичная ссылка. Укажи YANDEX_DISK_PUBLIC_URLS (список групп) либо YANDEX_DISK_PUBLIC_URL (одна группа).',
-  );
+  const sources = parsePublicSourceList(raw);
+
+  if (!sources.length) {
+    throw new Error(
+      `Переменная ${getActivePublicSourceEnvName()} задана, но в ней не нашлось ни одной ссылки. Проверь её значение.`,
+    );
+  }
+
+  // Старый режим одной ссылки: путь внутри публичной папки и имя группы
+  // задаются отдельными переменными. Для списка ссылок они не применяются.
+  if (sources.length === 1) {
+    sources[0].publicPath ||= getPublicPath();
+    sources[0].label ||= process.env.YANDEX_DISK_PUBLIC_LABEL?.trim() || undefined;
+  }
+
+  return dedupePublicSources(sources);
 }
 
 function getSourcesConfigKey(sources: PublicSourceConfig[]): string {
