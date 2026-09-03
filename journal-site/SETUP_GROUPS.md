@@ -33,7 +33,7 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 
    | Key | Value |
    |---|---|
-   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg` |
+   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA` |
 
 4. **Старую переменную `YANDEX_DISK_PUBLIC_URL` (без `S` на конце) удали** — кнопка с корзиной справа от строки.
    Если её оставить, ничего не сломается: она просто игнорируется, пока задана `YANDEX_DISK_PUBLIC_URLS`. Но чтобы потом не путаться, лучше удалить.
@@ -50,15 +50,16 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```json
 {
-  "count": 2,
+  "count": 3,
   "groups": [
     { "groupName": "ИСиП-25-9", "url": "/group/..." },
-    { "groupName": "ИСиП-24-9", "url": "/group/..." }
+    { "groupName": "ИСиП-24-9", "url": "/group/..." },
+    { "groupName": "ИСиП-23-9", "url": "/group/..." }
   ]
 }
 ```
 
-`count` — сколько групп увидел сайт. Сейчас в переменной две ссылки, значит должно быть `"count": 2`.
+`count` — сколько групп увидел сайт. Сейчас в переменной три ссылки, значит должно быть `"count": 3`.
 Названия групп берутся из имён файлов на Яндекс.Диске — если они выглядят не так, как хочется,
 задай их сам: `ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА, ИСиП-24/9 = https://disk.yandex.ru/i/ССЫЛКА`.
 
@@ -72,7 +73,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 2. Допиши ссылку через запятую:
 
    ```env
-   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, ПКС-24/9 = https://disk.yandex.ru/i/ТРЕТЬЯ-ССЫЛКА
+   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
    ```
 
 3. **Save Changes** → дождись **Live** → проверь `/api/groups`.
@@ -152,7 +153,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache
