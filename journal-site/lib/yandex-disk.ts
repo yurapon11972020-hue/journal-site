@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -9,10 +10,13 @@ const PRIVATE_RESOURCE_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/resource
 const PUBLIC_DOWNLOAD_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/public/resources/download';
 const PUBLIC_RESOURCE_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/public/resources';
 
-const PUBLIC_CACHE_GROUP_PATH = '__yandex_public_cache__';
+const PUBLIC_CACHE_PATH_PREFIX = '__yandex_public_cache__::';
 const PUBLIC_CACHE_META_FILE = 'latest.json';
+const PUBLIC_CACHE_GROUPS_FILE = 'groups.json';
 const DEFAULT_PUBLIC_CACHE_INTERVAL_MINUTES = 30;
 const DEFAULT_PUBLIC_CACHE_MAX_FILES = 2;
+const MAX_PUBLIC_FOLDER_DEPTH = 3;
+const MAX_PUBLIC_GROUPS = 60;
 
 interface YandexListItem {
   name?: string;
@@ -24,6 +28,24 @@ interface PublicResourceMeta {
   name?: string;
   path?: string;
   type?: string;
+  _embedded?: {
+    items?: YandexListItem[];
+  };
+}
+
+/** Одна запись из переменной окружения: ссылка + необязательные имя и путь внутри публичной папки. */
+interface PublicSourceConfig {
+  publicKey: string;
+  publicPath?: string;
+  label?: string;
+}
+
+/** Конкретный файл-журнал, найденный по публичной ссылке. Одна такая запись = одна группа. */
+interface PublicGroupSource {
+  publicKey: string;
+  publicPath?: string;
+  label?: string;
+  fileName: string;
 }
 
 interface CachedJournalVersion {
@@ -46,8 +68,15 @@ interface PublicJournalCacheMeta {
   versions: CachedJournalVersion[];
 }
 
+interface PublicGroupsCacheMeta {
+  configKey: string;
+  fetchedAt: string;
+  groups: PublicGroupSource[];
+}
+
 interface PublicJournalCacheRuntime {
-  refreshPromise?: Promise<CachedJournalVersion>;
+  refreshPromises?: Map<string, Promise<CachedJournalVersion>>;
+  groupsPromise?: Promise<PublicGroupSource[]>;
   interval?: NodeJS.Timeout;
 }
 
@@ -58,7 +87,9 @@ declare global {
 
 function getCacheRuntime(): PublicJournalCacheRuntime {
   globalThis.__journalPublicCacheRuntime ??= {};
-  return globalThis.__journalPublicCacheRuntime;
+  const runtime = globalThis.__journalPublicCacheRuntime;
+  runtime.refreshPromises ??= new Map<string, Promise<CachedJournalVersion>>();
+  return runtime;
 }
 
 function getSourceMode(): JournalSource {
@@ -72,14 +103,14 @@ function getSourceMode(): JournalSource {
 }
 
 function isSpreadsheetFile(fileName: string): boolean {
-  return /\.(xlsx|xlsm|xls)$/i.test(fileName);
+  return /\.(xlsx|xlsm|xls)$/i.test(fileName) && !fileName.startsWith('~$');
 }
 
-function buildGroupRef(source: JournalSource, filePath: string, fileName?: string): JournalGroupRef {
+function buildGroupRef(source: JournalSource, filePath: string, fileName?: string, groupName?: string): JournalGroupRef {
   const resolvedFileName = fileName || basenameFromFilePath(filePath);
   return {
     id: groupPathToId(filePath),
-    groupName: filenameToGroupName(resolvedFileName),
+    groupName: groupName?.trim() || filenameToGroupName(resolvedFileName),
     fileName: resolvedFileName,
     filePath,
     source,
@@ -137,18 +168,151 @@ function getPublicCacheDir(): string {
   return path.isAbsolute(configuredDir) ? configuredDir : path.join(process.cwd(), configuredDir);
 }
 
-function getPublicKey(): string {
-  const publicKey = process.env.YANDEX_DISK_PUBLIC_URL?.trim() || process.env.YANDEX_DISK_PUBLIC_KEY?.trim();
-
-  if (!publicKey) {
-    throw new Error('Для режима yandex-public-cache или yandex-public нужно указать YANDEX_DISK_PUBLIC_URL либо YANDEX_DISK_PUBLIC_KEY.');
-  }
-
-  return publicKey;
-}
-
 function getPublicPath(): string | undefined {
   return process.env.YANDEX_DISK_PUBLIC_PATH?.trim() || undefined;
+}
+
+/**
+ * Разбирает одну запись списка ссылок.
+ * Поддерживаются форматы:
+ *   https://disk.yandex.ru/i/xxxx
+ *   ИСиП-23/9 = https://disk.yandex.ru/i/xxxx
+ *   https://disk.yandex.ru/d/xxxx#/Журналы/ИСиП-23-9.xlsx
+ */
+function parsePublicSourceEntry(raw: string): PublicSourceConfig | null {
+  let entry = raw.trim();
+
+  if (!entry || entry.startsWith('#') || entry.startsWith('//')) {
+    return null;
+  }
+
+  let label: string | undefined;
+  const equalsIndex = entry.indexOf('=');
+  if (equalsIndex > 0) {
+    const head = entry.slice(0, equalsIndex).trim();
+    const tail = entry.slice(equalsIndex + 1).trim();
+    // Имя группы слева от «=» — только если слева не кусок самой ссылки.
+    if (tail && head && !head.includes('://')) {
+      label = head;
+      entry = tail;
+    }
+  }
+
+  let publicPath: string | undefined;
+  const hashIndex = entry.indexOf('#');
+  if (hashIndex >= 0) {
+    publicPath = entry.slice(hashIndex + 1).trim() || undefined;
+    entry = entry.slice(0, hashIndex).trim();
+  }
+
+  if (!entry) {
+    return null;
+  }
+
+  return { publicKey: entry, publicPath, label };
+}
+
+function dedupePublicSources(sources: PublicSourceConfig[]): PublicSourceConfig[] {
+  const seen = new Set<string>();
+  const result: PublicSourceConfig[] = [];
+
+  for (const source of sources) {
+    const key = `${source.publicKey}::${source.publicPath || ''}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(source);
+  }
+
+  return result;
+}
+
+/**
+ * Список публичных ссылок из переменных окружения.
+ * Приоритет: YANDEX_DISK_PUBLIC_URLS (много ссылок) → YANDEX_DISK_PUBLIC_URL (одна ссылка).
+ */
+function getPublicSources(): PublicSourceConfig[] {
+  const many = process.env.YANDEX_DISK_PUBLIC_URLS?.trim() || process.env.YANDEX_DISK_PUBLIC_KEYS?.trim();
+
+  if (many) {
+    const sources = many
+      .split(/[\n\r,;]+/)
+      .map((entry) => parsePublicSourceEntry(entry))
+      .filter((entry): entry is PublicSourceConfig => Boolean(entry));
+
+    if (sources.length) {
+      return dedupePublicSources(sources);
+    }
+  }
+
+  const single = process.env.YANDEX_DISK_PUBLIC_URL?.trim() || process.env.YANDEX_DISK_PUBLIC_KEY?.trim();
+
+  if (single) {
+    return [
+      {
+        publicKey: single,
+        publicPath: getPublicPath(),
+        label: process.env.YANDEX_DISK_PUBLIC_LABEL?.trim() || undefined,
+      },
+    ];
+  }
+
+  throw new Error(
+    'Не задана ни одна публичная ссылка. Укажи YANDEX_DISK_PUBLIC_URLS (список групп) либо YANDEX_DISK_PUBLIC_URL (одна группа).',
+  );
+}
+
+function getSourcesConfigKey(sources: PublicSourceConfig[]): string {
+  return crypto
+    .createHash('sha1')
+    .update(sources.map((source) => `${source.publicKey}::${source.publicPath || ''}::${source.label || ''}`).join('|'))
+    .digest('hex');
+}
+
+function getGroupCacheKey(group: Pick<PublicGroupSource, 'publicKey' | 'publicPath'>): string {
+  return crypto.createHash('sha1').update(`${group.publicKey}::${group.publicPath || ''}`).digest('hex').slice(0, 16);
+}
+
+function getGroupCacheDir(group: Pick<PublicGroupSource, 'publicKey' | 'publicPath'>): string {
+  return path.join(getPublicCacheDir(), getGroupCacheKey(group));
+}
+
+/** Виртуальный путь группы. Из него всегда можно восстановить ссылку без обращения к сети. */
+function encodePublicGroupPath(group: PublicGroupSource): string {
+  const payload = JSON.stringify({
+    k: group.publicKey,
+    p: group.publicPath || '',
+    n: group.fileName,
+    l: group.label || '',
+  });
+
+  return `${PUBLIC_CACHE_PATH_PREFIX}${Buffer.from(payload, 'utf8').toString('base64url')}`;
+}
+
+function decodePublicGroupPath(filePath?: string): PublicGroupSource | null {
+  if (!filePath || !filePath.startsWith(PUBLIC_CACHE_PATH_PREFIX)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(filePath.slice(PUBLIC_CACHE_PATH_PREFIX.length), 'base64url').toString('utf8'),
+    ) as { k?: string; p?: string; n?: string; l?: string };
+
+    if (!payload.k) {
+      return null;
+    }
+
+    return {
+      publicKey: payload.k,
+      publicPath: payload.p || undefined,
+      fileName: payload.n || 'journal.xlsx',
+      label: payload.l || undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function sanitizeFileName(fileName: string): string {
@@ -346,9 +510,11 @@ function buildPublicParams(publicKey: string, publicPath?: string): URLSearchPar
   return params;
 }
 
-async function readPublicResourceMeta(publicKey: string, publicPath?: string): Promise<PublicResourceMeta | null> {
+async function readPublicResourceMeta(publicKey: string, publicPath?: string, limit = 200): Promise<PublicResourceMeta | null> {
   try {
-    return await fetchJson<PublicResourceMeta>(`${PUBLIC_RESOURCE_ENDPOINT}?${buildPublicParams(publicKey, publicPath).toString()}`);
+    const params = buildPublicParams(publicKey, publicPath);
+    params.set('limit', String(limit));
+    return await fetchJson<PublicResourceMeta>(`${PUBLIC_RESOURCE_ENDPOINT}?${params.toString()}`);
   } catch {
     return null;
   }
@@ -360,19 +526,188 @@ async function getPublicDownloadBuffer(publicKey: string, publicPath?: string): 
 }
 
 async function readFromPublicYandexDisk(): Promise<JournalFileResult> {
-  const publicKey = getPublicKey();
-  const publicPath = getPublicPath();
-  const meta = await readPublicResourceMeta(publicKey, publicPath);
-  const buffer = await getPublicDownloadBuffer(publicKey, publicPath);
-  const fileName = meta?.name || (publicPath ? basenameFromFilePath(publicPath) : 'public-journal.xlsx');
+  const source = getPublicSources()[0];
+  const meta = await readPublicResourceMeta(source.publicKey, source.publicPath);
+  const buffer = await getPublicDownloadBuffer(source.publicKey, source.publicPath);
+  const fileName = meta?.name || (source.publicPath ? basenameFromFilePath(source.publicPath) : 'public-journal.xlsx');
 
   return {
     buffer,
     source: 'yandex-public',
-    sourceDetails: publicPath || publicKey,
+    sourceDetails: source.publicPath || source.publicKey,
     fileName,
-    groupNameHint: filenameToGroupName(fileName),
+    groupNameHint: source.label || filenameToGroupName(fileName),
   };
+}
+
+/** Рекурсивно собирает все Excel-файлы внутри публичной папки. */
+async function collectPublicFolderFiles(
+  source: PublicSourceConfig,
+  meta: PublicResourceMeta | null,
+  depth: number,
+  accumulator: PublicGroupSource[],
+): Promise<void> {
+  const items = meta?._embedded?.items ?? [];
+
+  for (const item of items) {
+    if (accumulator.length >= MAX_PUBLIC_GROUPS) {
+      return;
+    }
+
+    if (item.type === 'file' && item.name && isSpreadsheetFile(item.name)) {
+      accumulator.push({
+        publicKey: source.publicKey,
+        publicPath: item.path || undefined,
+        fileName: item.name,
+      });
+      continue;
+    }
+
+    if (item.type === 'dir' && item.path && depth < MAX_PUBLIC_FOLDER_DEPTH) {
+      const nested = await readPublicResourceMeta(source.publicKey, item.path);
+      await collectPublicFolderFiles(source, nested, depth + 1, accumulator);
+    }
+  }
+}
+
+async function readPublicGroupsCache(): Promise<PublicGroupsCacheMeta | null> {
+  try {
+    const content = await fs.readFile(path.join(getPublicCacheDir(), PUBLIC_CACHE_GROUPS_FILE), 'utf8');
+    return JSON.parse(content) as PublicGroupsCacheMeta;
+  } catch {
+    return null;
+  }
+}
+
+async function writePublicGroupsCache(meta: PublicGroupsCacheMeta): Promise<void> {
+  const cacheDir = getPublicCacheDir();
+  await fs.mkdir(cacheDir, { recursive: true });
+  await fs
+    .writeFile(path.join(cacheDir, PUBLIC_CACHE_GROUPS_FILE), `${JSON.stringify(meta, null, 2)}\n`, 'utf8')
+    .catch(() => undefined);
+}
+
+function sortPublicGroups(groups: PublicGroupSource[]): PublicGroupSource[] {
+  return [...groups].sort((a, b) => {
+    const nameA = a.label || filenameToGroupName(a.fileName);
+    const nameB = b.label || filenameToGroupName(b.fileName);
+    return nameA.localeCompare(nameB, 'ru', { numeric: true });
+  });
+}
+
+function dedupePublicGroups(groups: PublicGroupSource[]): PublicGroupSource[] {
+  const seen = new Set<string>();
+  const result: PublicGroupSource[] = [];
+
+  for (const group of groups) {
+    const key = `${group.publicKey}::${group.publicPath || ''}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(group);
+  }
+
+  return result;
+}
+
+async function resolvePublicGroupsFromNetwork(cached: PublicGroupsCacheMeta | null): Promise<PublicGroupSource[]> {
+  const sources = getPublicSources();
+  const groups: PublicGroupSource[] = [];
+
+  for (const source of sources) {
+    const meta = await readPublicResourceMeta(source.publicKey, source.publicPath);
+
+    // Ссылка на папку — внутри может быть сразу несколько групп.
+    if (meta?.type === 'dir') {
+      const found: PublicGroupSource[] = [];
+      await collectPublicFolderFiles(source, meta, 0, found);
+
+      if (found.length) {
+        groups.push(
+          ...found.map((group) => ({
+            ...group,
+            label: found.length === 1 ? source.label : undefined,
+          })),
+        );
+        continue;
+      }
+
+      // Папка есть, но файлов не видно — берём то, что уже знали раньше.
+      const remembered = cached?.groups.filter((group) => group.publicKey === source.publicKey) ?? [];
+      groups.push(...remembered);
+      continue;
+    }
+
+    if (!meta) {
+      // Яндекс не ответил: используем прошлый список для этой ссылки, иначе считаем её одним файлом.
+      const remembered = cached?.groups.filter((group) => group.publicKey === source.publicKey) ?? [];
+      if (remembered.length) {
+        groups.push(...remembered);
+        continue;
+      }
+    }
+
+    groups.push({
+      publicKey: source.publicKey,
+      publicPath: source.publicPath,
+      label: source.label,
+      fileName: meta?.name || (source.publicPath ? basenameFromFilePath(source.publicPath) : 'journal.xlsx'),
+    });
+  }
+
+  return sortPublicGroups(dedupePublicGroups(groups)).slice(0, MAX_PUBLIC_GROUPS);
+}
+
+async function resolvePublicGroups(options: { force?: boolean } = {}): Promise<PublicGroupSource[]> {
+  const runtime = getCacheRuntime();
+  const configKey = getSourcesConfigKey(getPublicSources());
+  const cached = await readPublicGroupsCache();
+  const cacheIsCurrent = cached?.configKey === configKey && cached.groups.length > 0;
+
+  if (!options.force && cacheIsCurrent) {
+    const fetchedAtMs = new Date(cached.fetchedAt).getTime();
+    if (Number.isFinite(fetchedAtMs) && Date.now() - fetchedAtMs < getPublicCacheIntervalMs()) {
+      return cached.groups;
+    }
+    if (!isWithinRefreshWindow()) {
+      return cached.groups;
+    }
+  }
+
+  if (runtime.groupsPromise) {
+    return runtime.groupsPromise;
+  }
+
+  runtime.groupsPromise = resolvePublicGroupsFromNetwork(cacheIsCurrent ? cached : null)
+    .then(async (groups) => {
+      if (groups.length) {
+        await writePublicGroupsCache({
+          configKey,
+          fetchedAt: new Date().toISOString(),
+          groups,
+        });
+        return groups;
+      }
+
+      if (cacheIsCurrent) {
+        return cached.groups;
+      }
+
+      throw new Error('По указанным публичным ссылкам не найдено ни одного файла журнала.');
+    })
+    .catch((error) => {
+      if (cacheIsCurrent) {
+        console.error('[journal-cache] Не удалось обновить список групп, работаем по прошлому списку:', error);
+        return cached.groups;
+      }
+      throw error;
+    })
+    .finally(() => {
+      runtime.groupsPromise = undefined;
+    });
+
+  return runtime.groupsPromise;
 }
 
 async function readPublicCacheMeta(cacheDir: string): Promise<PublicJournalCacheMeta | null> {
@@ -442,32 +777,37 @@ async function cleanupOldCacheFiles(cacheDir: string, versionsToKeep: CachedJour
   return keptVersions;
 }
 
-async function downloadPublicJournalToCache(cacheDir: string, publicKey: string, publicPath?: string): Promise<CachedJournalVersion> {
+async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<CachedJournalVersion> {
+  const cacheDir = getGroupCacheDir(group);
   await fs.mkdir(cacheDir, { recursive: true });
 
   const now = new Date();
   const downloadedAt = now.toISOString();
-  const meta = await readPublicResourceMeta(publicKey, publicPath);
-  const originalFileName = sanitizeFileName(meta?.name || (publicPath ? basenameFromFilePath(publicPath) : 'journal.xlsx'));
+  // Имя файла уже известно из списка групп — лишний запрос к API не нужен.
+  const knownFileName = group.fileName?.trim();
+  const meta = knownFileName ? null : await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
+  const originalFileName = sanitizeFileName(knownFileName || meta?.name || 'journal.xlsx');
   const extension = path.extname(originalFileName) || '.xlsx';
   const displayName = originalFileName;
   const cachedFileName = `journal-${timestampForFileName(now)}${extension}`;
   const cachedFilePath = path.join(cacheDir, cachedFileName);
   const tempFilePath = `${cachedFilePath}.tmp`;
 
-  const buffer = await getPublicDownloadBuffer(publicKey, publicPath);
+  const buffer = await getPublicDownloadBuffer(group.publicKey, group.publicPath);
   await fs.writeFile(tempFilePath, buffer);
   await fs.rename(tempFilePath, cachedFilePath);
 
   const existingMeta = await readPublicCacheMeta(cacheDir);
-  const existingVersions = isCacheMetaForCurrentSource(existingMeta, publicKey, publicPath) ? existingMeta.versions : [];
+  const existingVersions = isCacheMetaForCurrentSource(existingMeta, group.publicKey, group.publicPath)
+    ? existingMeta.versions
+    : [];
   const version: CachedJournalVersion = {
     fileName: cachedFileName,
     filePath: cachedFilePath,
     displayName,
     downloadedAt,
-    publicKey,
-    publicPath,
+    publicKey: group.publicKey,
+    publicPath: group.publicPath,
   };
   const versions = await cleanupOldCacheFiles(cacheDir, [...existingVersions, version]);
 
@@ -475,8 +815,8 @@ async function downloadPublicJournalToCache(cacheDir: string, publicKey: string,
     latestFileName: version.fileName,
     latestFilePath: version.filePath,
     displayName,
-    publicKey,
-    publicPath,
+    publicKey: group.publicKey,
+    publicPath: group.publicPath,
     checkedAt: downloadedAt,
     downloadedAt,
     versions,
@@ -485,29 +825,54 @@ async function downloadPublicJournalToCache(cacheDir: string, publicKey: string,
   return version;
 }
 
-async function ensureFreshCachedPublicJournal(options: { force?: boolean } = {}): Promise<CachedJournalVersion> {
-  const publicKey = getPublicKey();
-  const publicPath = getPublicPath();
-  const cacheDir = getPublicCacheDir();
+async function ensureFreshCachedPublicJournal(
+  group: PublicGroupSource,
+  options: { force?: boolean } = {},
+): Promise<CachedJournalVersion> {
+  const cacheDir = getGroupCacheDir(group);
   const intervalMs = getPublicCacheIntervalMs();
   const runtime = getCacheRuntime();
+  const runtimeKey = getGroupCacheKey(group);
 
   await fs.mkdir(cacheDir, { recursive: true });
 
-  const latest = await getValidLatestCachedVersion(cacheDir, publicKey, publicPath);
+  const latest = await getValidLatestCachedVersion(cacheDir, group.publicKey, group.publicPath);
   if (!options.force && latest && (shouldUseCachedVersion(latest, intervalMs) || !isWithinRefreshWindow())) {
     return latest;
   }
 
-  if (runtime.refreshPromise) {
-    return runtime.refreshPromise;
+  const running = runtime.refreshPromises?.get(runtimeKey);
+  if (running) {
+    return running;
   }
 
-  runtime.refreshPromise = downloadPublicJournalToCache(cacheDir, publicKey, publicPath).finally(() => {
-    runtime.refreshPromise = undefined;
-  });
+  const refreshPromise = downloadPublicJournalToCache(group)
+    .catch((error) => {
+      // Не смогли скачать новую копию — отдаём прошлую, чтобы сайт и бот не падали.
+      if (latest) {
+        console.error('[journal-cache] Не удалось обновить журнал, отдаём прошлую копию:', error);
+        return latest;
+      }
+      throw error;
+    })
+    .finally(() => {
+      runtime.refreshPromises?.delete(runtimeKey);
+    });
 
-  return runtime.refreshPromise;
+  runtime.refreshPromises?.set(runtimeKey, refreshPromise);
+  return refreshPromise;
+}
+
+async function refreshAllPublicJournals(options: { force?: boolean } = {}): Promise<void> {
+  const groups = await resolvePublicGroups({ force: options.force });
+
+  for (const group of groups) {
+    try {
+      await ensureFreshCachedPublicJournal(group, options);
+    } catch (error) {
+      console.error(`[journal-cache] Группа «${group.label || group.fileName}» не обновилась:`, error);
+    }
+  }
 }
 
 function startPublicCacheRefreshLoop(): void {
@@ -521,7 +886,7 @@ function startPublicCacheRefreshLoop(): void {
     if (!isWithinRefreshWindow()) {
       return;
     }
-    void ensureFreshCachedPublicJournal({ force: true }).catch((error) => {
+    void refreshAllPublicJournals({ force: true }).catch((error) => {
       console.error('[journal-cache] Не удалось обновить журнал:', error);
     });
   }, intervalMs);
@@ -539,7 +904,7 @@ export async function startJournalCache(): Promise<void> {
   // Стартовая загрузка с повторами: сеть при старте сервера иногда недоступна пару секунд.
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      await ensureFreshCachedPublicJournal({ force: true });
+      await refreshAllPublicJournals({ force: true });
       return;
     } catch (error) {
       if (attempt === 3) {
@@ -551,9 +916,27 @@ export async function startJournalCache(): Promise<void> {
   }
 }
 
-async function readFromCachedPublicYandexDisk(): Promise<JournalFileResult> {
+async function resolvePublicGroupForPath(filePath?: string): Promise<PublicGroupSource> {
+  const decoded = decodePublicGroupPath(filePath);
+  if (decoded) {
+    return decoded;
+  }
+
+  // Пустой путь или старый идентификатор одной группы — открываем первую группу списка.
+  const groups = await resolvePublicGroups();
+  const first = groups[0];
+
+  if (!first) {
+    throw new Error('По указанным публичным ссылкам не найдено ни одного файла журнала.');
+  }
+
+  return first;
+}
+
+async function readFromCachedPublicYandexDisk(filePath?: string): Promise<JournalFileResult> {
   startPublicCacheRefreshLoop();
-  const cached = await ensureFreshCachedPublicJournal();
+  const group = await resolvePublicGroupForPath(filePath);
+  const cached = await ensureFreshCachedPublicJournal(group);
   const buffer = await fs.readFile(cached.filePath);
 
   return {
@@ -561,7 +944,7 @@ async function readFromCachedPublicYandexDisk(): Promise<JournalFileResult> {
     source: 'yandex-public-cache',
     sourceDetails: `${cached.filePath} ← ${cached.publicPath || cached.publicKey}`,
     fileName: cached.displayName,
-    groupNameHint: filenameToGroupName(cached.displayName),
+    groupNameHint: group.label || filenameToGroupName(cached.displayName),
   };
 }
 
@@ -574,13 +957,20 @@ export async function listJournalFiles(): Promise<JournalGroupRef[]> {
 
   if (source === 'yandex-public') {
     const file = await readFromPublicYandexDisk();
-    return [buildGroupRef('yandex-public', file.sourceDetails, file.fileName)];
+    return [buildGroupRef('yandex-public', file.sourceDetails, file.fileName, file.groupNameHint)];
   }
 
   if (source === 'yandex-public-cache') {
     startPublicCacheRefreshLoop();
-    const cached = await ensureFreshCachedPublicJournal();
-    return [buildGroupRef('yandex-public-cache', PUBLIC_CACHE_GROUP_PATH, cached.displayName)];
+    const groups = await resolvePublicGroups();
+
+    if (!groups.length) {
+      throw new Error('По указанным публичным ссылкам не найдено ни одного файла журнала.');
+    }
+
+    return groups.map((group) =>
+      buildGroupRef('yandex-public-cache', encodePublicGroupPath(group), group.fileName, group.label),
+    );
   }
 
   return listLocalJournalFiles();
@@ -598,7 +988,7 @@ export async function loadJournalFile(filePath?: string): Promise<JournalFileRes
   }
 
   if (source === 'yandex-public-cache') {
-    return readFromCachedPublicYandexDisk();
+    return readFromCachedPublicYandexDisk(filePath);
   }
 
   return readLocalFile(filePath);

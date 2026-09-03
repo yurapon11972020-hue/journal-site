@@ -1,0 +1,29 @@
+# зависимости
+node_modules/
+.pnp
+.pnp.js
+
+# сборка Next.js
+.next/
+out/
+build/
+
+# кэш журнала и локальные данные
+.journal-cache/
+journal-cache/
+data/
+.test-data/
+.libtest/
+
+# переменные окружения
+.env
+.env.local
+.env.*.local
+
+# системное
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-error.log*
+.vercel
+*.tsbuildinfo
