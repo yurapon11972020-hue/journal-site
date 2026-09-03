@@ -53,7 +53,7 @@ git push -u origin main
 NODE_VERSION=20.11.1
 NEXT_TELEMETRY_DISABLED=1
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=/tmp/journal-cache
