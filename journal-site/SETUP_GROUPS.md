@@ -25,7 +25,7 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 
 ---
 
-## 2. Перевести сайт на новую ссылку (на Render)
+## 2. Подключить ссылки на Render
 
 1. Открой свой сервис **journal-site** на [render.com](https://dashboard.render.com).
 2. Слева выбери **Environment**.
@@ -33,7 +33,7 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 
    | Key | Value |
    |---|---|
-   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ` |
+   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg` |
 
 4. **Старую переменную `YANDEX_DISK_PUBLIC_URL` (без `S` на конце) удали** — кнопка с корзиной справа от строки.
    Если её оставить, ничего не сломается: она просто игнорируется, пока задана `YANDEX_DISK_PUBLIC_URLS`. Но чтобы потом не путаться, лучше удалить.
@@ -49,14 +49,22 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 Ответ должен выглядеть так:
 
 ```json
-{ "count": 1, "groups": [ { "groupName": "ИСиП-25-9", "url": "/group/..." } ] }
+{
+  "count": 2,
+  "groups": [
+    { "groupName": "ИСиП-25-9", "url": "/group/..." },
+    { "groupName": "ИСиП-24-9", "url": "/group/..." }
+  ]
+}
 ```
 
-`count` — сколько групп увидел сайт. Если `count` больше нуля и названия правильные — всё работает.
+`count` — сколько групп увидел сайт. Сейчас в переменной две ссылки, значит должно быть `"count": 2`.
+Названия групп берутся из имён файлов на Яндекс.Диске — если они выглядят не так, как хочется,
+задай их сам: `ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА, ИСиП-24/9 = https://disk.yandex.ru/i/ССЫЛКА`.
 
 ---
 
-## 3. Добавить вторую и следующие группы
+## 3. Добавить следующие группы
 
 Когда появится ссылка на журнал ещё одной группы:
 
@@ -64,7 +72,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 2. Допиши ссылку через запятую:
 
    ```env
-   ИСиП-25/9 = https://disk.yandex.ru/i/jr0lr00cUQp0FQ, ПКС-24/9 = https://disk.yandex.ru/i/НОВАЯ-ССЫЛКА
+   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, ПКС-24/9 = https://disk.yandex.ru/i/ТРЕТЬЯ-ССЫЛКА
    ```
 
 3. **Save Changes** → дождись **Live** → проверь `/api/groups`.
@@ -144,7 +152,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache

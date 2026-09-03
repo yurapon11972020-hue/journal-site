@@ -17,7 +17,7 @@ services:
       # Несколько групп пишутся через запятую или с новой строки,
       # можно задать своё название: "ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА".
       - key: YANDEX_DISK_PUBLIC_URLS
-        value: https://disk.yandex.ru/i/jr0lr00cUQp0FQ
+        value: "https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg"
       - key: JOURNAL_CACHE_INTERVAL_MINUTES
         value: "5"
       - key: JOURNAL_CACHE_MAX_FILES

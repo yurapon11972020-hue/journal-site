@@ -29,7 +29,7 @@ npm install
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache
@@ -127,7 +127,7 @@ Environment variables на Render:
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=/tmp/journal-cache
