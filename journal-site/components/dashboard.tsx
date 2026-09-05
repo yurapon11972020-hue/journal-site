@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { CSSProperties, useEffect, useMemo, useState } from 'react';
+import { CSSProperties, useMemo, useState } from 'react';
 
 import { classifyMarkValue, markToneToClass } from '@/lib/mark-classifier';
 import type { GradeEntry, JournalData, LessonTopic, ReportCard } from '@/lib/types';
+import { useTheme } from '@/lib/use-theme';
 
 interface DashboardProps {
   data: JournalData;
@@ -124,29 +125,11 @@ function StatCard({
   hint?: string;
   tone?: 'default' | 'warning' | 'good';
 }) {
-  const toneStyle: CSSProperties =
-    tone === 'warning'
-      ? { borderColor: 'rgba(248, 113, 113, 0.55)', background: 'rgba(244, 63, 94, 0.12)' }
-      : tone === 'good'
-        ? { borderColor: 'rgba(74, 222, 128, 0.5)', background: 'rgba(34, 197, 94, 0.12)' }
-        : {};
-
   return (
-    <div
-      style={{
-        border: '1px solid var(--border)',
-        background: 'var(--panel)',
-        borderRadius: '14px',
-        padding: '12px 14px',
-        boxShadow: 'var(--shadow)',
-        display: 'grid',
-        gap: '4px',
-        ...toneStyle,
-      }}
-    >
-      <span style={{ color: 'var(--muted)', fontSize: '0.82rem' }}>{label}</span>
-      <span style={{ fontSize: '1.4rem', fontWeight: 800, lineHeight: 1.1 }}>{value}</span>
-      {hint ? <span style={{ color: 'var(--muted)', fontSize: '0.78rem' }}>{hint}</span> : null}
+    <div className={`stat-card${tone === 'default' ? '' : ` stat-card--${tone}`}`}>
+      <span className="stat-card__label">{label}</span>
+      <span className="stat-card__value">{value}</span>
+      {hint ? <span className="stat-card__hint">{hint}</span> : null}
     </div>
   );
 }
@@ -299,23 +282,11 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
   const subjectAggregates = useMemo(() => buildSubjectAggregates(data), [data]);
   const groupStats = useMemo(() => computeGroupStats(data), [data]);
   const [activeTab, setActiveTab] = useState<string>('report-cards');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const { theme, toggleTheme } = useTheme();
   const [reportSearch, setReportSearch] = useState('');
   const [reportSort, setReportSort] = useState<ReportSort>('name');
   const [subjectSort, setSubjectSort] = useState<SubjectSort>('default');
   const [expandedCards, setExpandedCards] = useState<number[]>([]);
-
-  useEffect(() => {
-    const savedTheme = window.localStorage.getItem('journal-theme');
-    if (savedTheme === 'light' || savedTheme === 'dark') {
-      setTheme(savedTheme);
-    }
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem('journal-theme', theme);
-  }, [theme]);
 
   const normalizedSearch = useMemo(() => normalizeSearchValue(reportSearch), [reportSearch]);
 
@@ -380,45 +351,35 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
   return (
     <main className="page-shell">
       <section className="page-header">
-        <div>
+        <div className="page-header__main">
+          {backHref ? (
+            <Link href={backHref} className="back-link">
+              <span aria-hidden>←</span> {backLabel}
+            </Link>
+          ) : null}
           <div className="eyebrow">Электронный журнал</div>
           <h1 className="page-title">{data.groupName || 'Группа без названия'}</h1>
-          {backHref ? (
-            <div className="header-actions">
-              <Link href={backHref} className="back-link">
-                ← {backLabel}
-              </Link>
-            </div>
-          ) : null}
         </div>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="page-header__actions">
           <a
             href="https://t.me/SKIBJOURNAL_BOT"
             target="_blank"
             rel="noopener noreferrer"
-            className="theme-toggle"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', textDecoration: 'none' }}
+            className="theme-toggle theme-toggle--link"
           >
             <span aria-hidden>✈️</span> Телеграм-бот
           </a>
           <button
             type="button"
             className="theme-toggle"
-            onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            onClick={toggleTheme}
           >
             {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
           </button>
         </div>
       </section>
 
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-          gap: '10px',
-          marginBottom: '18px',
-        }}
-      >
+      <section className="stat-grid">
         <StatCard label="Студентов" value={String(groupStats.studentCount)} />
         <StatCard label="Предметов" value={String(groupStats.subjectCount)} />
         <StatCard
@@ -439,7 +400,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
         />
       </section>
 
-      <section className="tab-grid">
+      <section className="tab-row" aria-label="Разделы журнала">
         <button
           type="button"
           className={`tab-chip ${activeTab === 'report-cards' ? 'tab-chip--active' : ''}`}
@@ -616,7 +577,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
           <div className="table-wrap table-wrap--subject">
             <table
               className={`journal-table subject-table ${getSubjectDensityClass(selectedSubject.columns.length)}`}
-              style={{ ['--lesson-count' as '--lesson-count']: String(Math.max(selectedSubject.columns.length, 1)) } as CSSProperties}
+              style={{ ['--lesson-count' as const]: String(Math.max(selectedSubject.columns.length, 1)) } as CSSProperties}
             >
               <thead>
                 <tr>

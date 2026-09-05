@@ -201,51 +201,6 @@ function getWorkbookCellText(workbook: XLSX.WorkBook, sheet: XLSX.WorkSheet, row
   return getCellText(sheet, row, col);
 }
 
-function getWorkbookCellNumber(workbook: XLSX.WorkBook, sheet: XLSX.WorkSheet, row: number, col: number): number | null {
-  const resolvedText = getWorkbookCellText(workbook, sheet, row, col);
-  if (resolvedText) {
-    return parseNumber(resolvedText);
-  }
-
-  const cell = getCell(sheet, row, col);
-  const formula = typeof cell?.f === 'string' ? cell.f : '';
-  const formulaBody = formula.trim().replace(/^=/, '').trim();
-
-  const averageMatch = formulaBody.match(/^IFERROR\(AVERAGE\(([$]?[A-Z]+[$]?\d+):([$]?[A-Z]+[$]?\d+)\),\s*""\)$/i);
-  if (averageMatch) {
-    const start = XLSX.utils.decode_cell(averageMatch[1].replace(/\$/g, '').toUpperCase());
-    const end = XLSX.utils.decode_cell(averageMatch[2].replace(/\$/g, '').toUpperCase());
-    const values: number[] = [];
-    for (let r = start.r; r <= end.r; r += 1) {
-      const value = parseNumber(getWorkbookCellText(workbook, sheet, r + 1, start.c + 1));
-      if (value !== null) {
-        values.push(value);
-      }
-    }
-    return values.length ? roundTo(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
-  }
-
-  const sumMatch = formulaBody.match(/^SUM\(([$]?[A-Z]+[$]?\d+):([$]?[A-Z]+[$]?\d+)\)$/i);
-  if (sumMatch) {
-    const start = XLSX.utils.decode_cell(sumMatch[1].replace(/\$/g, '').toUpperCase());
-    const end = XLSX.utils.decode_cell(sumMatch[2].replace(/\$/g, '').toUpperCase());
-    let total = 0;
-    let hasValue = false;
-    for (let r = start.r; r <= end.r; r += 1) {
-      for (let c = start.c; c <= end.c; c += 1) {
-        const value = getWorkbookCellNumber(workbook, sheet, r + 1, c + 1);
-        if (value !== null) {
-          total += value;
-          hasValue = true;
-        }
-      }
-    }
-    return hasValue ? total : null;
-  }
-
-  return parseNumber(getCellText(sheet, row, col));
-}
-
 function isGenericHeader(value: string): boolean {
   const normalized = normalizeName(value);
   return GENERIC_HEADER_WORDS.some((word) => normalized === word || normalized.includes(word));
@@ -442,7 +397,14 @@ function buildRoster(workbook: XLSX.WorkBook): RosterInfo {
   }
 
   if (!bestSheet || bestRows.length === 0) {
-    throw new Error('Не удалось определить список студентов в журнале.');
+    const sheetNames = workbook.SheetNames.filter((name) => !EXCLUDED_SHEETS.has(name));
+    const seen = sheetNames.length ? `Просмотрены листы: ${sheetNames.join(', ')}.` : 'В файле нет ни одного листа с предметом.';
+
+    throw new Error(
+      'Не удалось определить список студентов в журнале. ' +
+        'Номер студента должен стоять в первом столбце, фамилия — во втором. ' +
+        seen,
+    );
   }
 
   return {
@@ -1018,7 +980,9 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
   return {
     groupName: roster.groupName,
     source: fileInfo.source,
-    sourceDetails: fileInfo.sourceDetails,
+    // Наружу отдаём только вид источника: внутренний путь кэша и публичная
+    // ссылка на Яндекс.Диск не должны попадать в ответ /api/journal.
+    sourceDetails: fileInfo.source === 'local' ? (fileInfo.fileName ?? 'локальный файл') : 'Яндекс.Диск',
     updatedAt: new Date().toISOString(),
     studentCount: students.length,
     subjectCount: subjectMeta.length,

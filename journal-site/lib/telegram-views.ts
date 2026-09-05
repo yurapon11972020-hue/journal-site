@@ -1,4 +1,3 @@
-import { groupPathToId } from '@/lib/group-files';
 import { escapeHtml, type InlineButton } from '@/lib/telegram';
 import type { JournalData, JournalGroupRef, ReportCard, StudentRecord, SubjectSummary } from '@/lib/types';
 
@@ -27,7 +26,7 @@ function groupWebAppUrl(group: JournalGroupRef | undefined): string | null {
   if (!group) {
     return base;
   }
-  return `${base}/group/${groupPathToId(group.filePath)}`;
+  return `${base}/group/${group.id}`;
 }
 
 function formatAvg(value: number | null): string {

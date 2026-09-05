@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 
 import Dashboard from '@/components/dashboard';
+import ErrorScreen from '@/components/error-screen';
 import { findJournalGroupById, getJournalDataByGroupId } from '@/lib/journal';
+import type { JournalData } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,24 +27,30 @@ export async function generateMetadata({ params }: GroupPageProps): Promise<Meta
 export default async function GroupPage({ params }: GroupPageProps) {
   const { id } = await params;
 
-  try {
-    const data = await getJournalDataByGroupId(id);
-    return <Dashboard data={data} backHref="/" backLabel="Все группы" />;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+  let data: JournalData | null = null;
+  let errorMessage: string | null = null;
 
-    return (
-      <main className="error-page">
-        <section className="error-card">
-          <div className="kicker">Ошибка загрузки журнала</div>
-          <h1 className="title">Не удалось открыть группу</h1>
-          <p className="subtitle">
-            Проверь, открывается ли Excel-файл этой группы по публичной ссылке, и переменные{' '}
-            <code>YANDEX_DISK_PUBLIC_URLS</code> в настройках сервера.
-          </p>
-          <code className="code">{message}</code>
-        </section>
-      </main>
-    );
+  try {
+    data = await getJournalDataByGroupId(id);
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : 'Неизвестная ошибка';
   }
+
+  if (data) {
+    return <Dashboard data={data} backHref="/" backLabel="Все группы" />;
+  }
+
+  return (
+    <ErrorScreen
+      kicker="Ошибка загрузки журнала"
+      title="Не удалось открыть группу"
+      hint={
+        <>
+          Проверь, открывается ли Excel-файл этой группы по публичной ссылке, и переменную{' '}
+          <code>YANDEX_DISK_PUBLIC_URLS</code> в настройках сервера.
+        </>
+      }
+      details={errorMessage ?? 'Неизвестная ошибка'}
+    />
+  );
 }

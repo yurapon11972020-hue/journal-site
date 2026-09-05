@@ -3,6 +3,8 @@ import { parseJournalWorkbook } from '@/lib/parseJournal';
 import type { JournalData, JournalFileResult, JournalGroupRef } from '@/lib/types';
 import { listJournalFiles, loadJournalFile } from '@/lib/yandex-disk';
 
+const LEGACY_SINGLE_GROUP_PATH = '__yandex_public_cache__';
+
 interface ParsedJournalCacheEntry {
   data: JournalData;
   createdAt: number;
@@ -14,7 +16,6 @@ interface JournalRuntimeCache {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __journalRuntimeCache: JournalRuntimeCache | undefined;
 }
 
@@ -118,12 +119,47 @@ export async function getJournalData(): Promise<JournalData> {
   return getJournalDataByPath(firstGroup?.filePath);
 }
 
-export async function getJournalDataByGroupId(groupId: string): Promise<JournalData> {
-  const filePath = idToGroupPath(groupId);
-  return getJournalDataByPath(filePath);
+/**
+ * Старый идентификатор группы — путь к файлу, закодированный в base64.
+ * Раскодированное значение используется только для сверки со списком групп:
+ * открыть по нему произвольный путь на сервере нельзя.
+ */
+function decodeLegacyGroupId(groupId: string): string | null {
+  try {
+    const decoded = idToGroupPath(groupId);
+    return decoded && !/[\u0000-\u001f]/.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function findJournalGroupById(groupId: string): Promise<JournalGroupRef | null> {
   const groups = await listJournalFiles();
-  return groups.find((group) => group.id === groupId) ?? null;
+  const byId = groups.find((group) => group.id === groupId);
+  if (byId) {
+    return byId;
+  }
+
+  const legacyPath = decodeLegacyGroupId(groupId);
+  if (!legacyPath) {
+    return null;
+  }
+
+  const byLegacyPath = groups.find((group) => group.filePath === legacyPath);
+  if (byLegacyPath) {
+    return byLegacyPath;
+  }
+
+  // До поддержки нескольких групп у единственной группы был фиксированный путь.
+  return legacyPath === LEGACY_SINGLE_GROUP_PATH ? (groups[0] ?? null) : null;
+}
+
+export async function getJournalDataByGroupId(groupId: string): Promise<JournalData> {
+  const group = await findJournalGroupById(groupId);
+
+  if (!group) {
+    throw new Error('Такая группа не найдена. Скорее всего, ссылка устарела — открой список групп заново.');
+  }
+
+  return getJournalDataByPath(group.filePath);
 }
