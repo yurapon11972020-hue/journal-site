@@ -76,3 +76,73 @@ export function buildJournalWorkbook(options: FixtureOptions = {}): Buffer {
 
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
+
+export interface MonthBlockOptions {
+  groupName?: string;
+  students?: string[];
+  subjectName?: string;
+  sheetName?: string;
+  /** Что написать в A1: в бланке там иногда стоит подпись «Наименование предмета». */
+  firstCellText?: string;
+  /** Оценки по месяцам: marks[студент][месяц][занятие]. */
+  marks: string[][][];
+}
+
+/**
+ * Журнал, где итоговый блок «Средний / Уваж. / Неуваж.» повторяется
+ * после каждого месяца, а не стоит один раз в конце листа.
+ */
+export function buildMonthBlockWorkbook(options: MonthBlockOptions): Buffer {
+  const groupName = options.groupName ?? 'ИСиП-25/9';
+  const students = options.students ?? ['Иванов Иван Иванович', 'Петров Пётр Петрович'];
+  const subjectName = options.subjectName ?? 'Физика';
+  const monthNames = ['Сентябрь', 'Октябрь', 'Ноябрь'];
+  const monthCount = options.marks[0].length;
+  const perMonth = options.marks[0][0].length;
+
+  const monthRow: string[] = [groupName, 'ФИО'];
+  const dayRow: string[] = ['№', ''];
+
+  for (let month = 0; month < monthCount; month += 1) {
+    for (let lesson = 0; lesson < perMonth; lesson += 1) {
+      monthRow.push(monthNames[month] ?? `Месяц ${month + 1}`);
+      dayRow.push(String((month + 1) * 2 + lesson));
+    }
+    monthRow.push('Средний', 'Уваж.', 'Неуваж.');
+    dayRow.push('', '', '');
+  }
+
+  const rows: string[][] = [];
+  rows[0] = [options.firstCellText ?? '', '', subjectName];
+  rows[1] = ['', '', 'Преподаватель А. А.'];
+  rows[2] = monthRow;
+  rows[3] = dayRow;
+
+  students.forEach((student, studentIndex) => {
+    const row: string[] = [`${studentIndex + 1}.`, student];
+
+    for (let month = 0; month < monthCount; month += 1) {
+      const monthMarks = options.marks[studentIndex][month];
+      row.push(...monthMarks);
+
+      const numeric = monthMarks.map(Number).filter((value) => Number.isFinite(value) && value > 0);
+      row.push(
+        numeric.length ? String(Math.round((numeric.reduce((a, b) => a + b, 0) / numeric.length) * 100) / 100) : '',
+        String(monthMarks.filter((value) => value === 'н/у').length),
+        String(monthMarks.filter((value) => value === 'н').length),
+      );
+    }
+
+    rows[4 + studentIndex] = row;
+  });
+
+  const width = rows.reduce((max, row) => Math.max(max, row?.length ?? 0), 0);
+  const normalized = rows.map((row) => {
+    const current = row ?? [];
+    return [...current, ...Array<string>(width - current.length).fill('')];
+  });
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(normalized), options.sheetName ?? subjectName);
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}

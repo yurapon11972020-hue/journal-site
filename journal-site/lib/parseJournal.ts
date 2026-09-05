@@ -413,18 +413,39 @@ function buildRoster(workbook: XLSX.WorkBook): RosterInfo {
   };
 }
 
-function findSummaryColumns(sheet: XLSX.WorkSheet, maxColumn: number): {
+// Заголовки итоговых столбцов. В журнале такой блок может стоять
+// не только в конце листа, но и после каждого месяца.
+const SUMMARY_HEADER_WORDS = ['средний', 'уваж', 'неуваж', 'пропуск', 'итог', 'аттестац', 'экзамен'];
+
+function isSummaryHeader(headerText: string): boolean {
+  return SUMMARY_HEADER_WORDS.some((word) => headerText.includes(word));
+}
+
+function findSummaryColumns(
+  sheet: XLSX.WorkSheet,
+  maxColumn: number,
+): {
   averageCol: number | null;
   validCol: number | null;
   invalidCol: number | null;
+  summaryColumns: Set<number>;
 } {
   let averageCol: number | null = null;
   let validCol: number | null = null;
   let invalidCol: number | null = null;
+  const summaryColumns = new Set<number>();
 
   for (const headerRow of [3, 4]) {
     for (let col = 1; col <= maxColumn; col += 1) {
       const header = normalizeName(getCellText(sheet, headerRow, col));
+
+      if (!header) {
+        continue;
+      }
+
+      if (isSummaryHeader(header)) {
+        summaryColumns.add(col);
+      }
 
       if (!averageCol && header.includes('средний')) {
         averageCol = col;
@@ -440,17 +461,38 @@ function findSummaryColumns(sheet: XLSX.WorkSheet, maxColumn: number): {
     }
   }
 
-  return { averageCol, validCol, invalidCol };
+  return { averageCol, validCol, invalidCol, summaryColumns };
+}
+
+// Подписи из шапки бланка. Это не названия предметов, показывать их нельзя.
+const SUBJECT_NAME_PLACEHOLDERS = new Set([
+  'наименование предмета',
+  'наименование дисциплины',
+  'название предмета',
+  'название дисциплины',
+  'предмет',
+  'дисциплина',
+  'фио преподавателя',
+  'преподаватель',
+]);
+
+function isPlaceholderSubjectName(value: string): boolean {
+  return SUBJECT_NAME_PLACEHOLDERS.has(normalizeName(value));
 }
 
 function detectSubjectName(sheet: XLSX.WorkSheet, fallback: string): string {
-  const c1 = getCellText(sheet, 1, 3);
-  if (c1 && !['наименование предмета', 'предмет'].includes(normalizeName(c1))) {
-    return normalizeSubjectDisplayName(c1);
+  // Раньше подпись отсеивалась только в C1, а из A1 бралась как есть,
+  // и вкладка предмета называлась «Наименование предмета».
+  // Только первая строка: во второй стоит преподаватель, его брать нельзя.
+  const candidates = [getCellText(sheet, 1, 3), getCellText(sheet, 1, 1)];
+
+  for (const candidate of candidates) {
+    if (candidate && !isPlaceholderSubjectName(candidate)) {
+      return normalizeSubjectDisplayName(candidate);
+    }
   }
 
-  const a1 = getCellText(sheet, 1, 1);
-  return normalizeSubjectDisplayName(a1 || fallback);
+  return normalizeSubjectDisplayName(fallback);
 }
 
 function detectTeacherName(sheet: XLSX.WorkSheet): string | null {
@@ -469,13 +511,22 @@ function detectTeacherName(sheet: XLSX.WorkSheet): string | null {
 
 function buildLessonColumns(
   sheet: XLSX.WorkSheet,
-  averageCol: number,
+  maxColumn: number,
+  summaryColumns: Set<number>,
   rosterRows: number[],
 ): SheetLessonColumn[] {
   const columns: SheetLessonColumn[] = [];
   let lastMonthLabel = '';
 
-  for (let col = 3; col < averageCol; col += 1) {
+  // Идём по всей ширине листа, а не до первого столбца «Средний».
+  // В журнале итоговый блок может повторяться после каждого месяца,
+  // и всё, что стояло за первым таким блоком, раньше терялось.
+  for (let col = 3; col <= maxColumn; col += 1) {
+    if (summaryColumns.has(col)) {
+      lastMonthLabel = '';
+      continue;
+    }
+
     const rawMonthLabel = getCellText(sheet, 3, col);
     if (rawMonthLabel) {
       lastMonthLabel = rawMonthLabel;
@@ -485,11 +536,7 @@ function buildLessonColumns(
     const dayLabel = getCellText(sheet, 4, col) || null;
     const headerText = normalizeName(`${monthLabel || ''} ${dayLabel || ''}`);
 
-    if (headerText.includes('средний') || headerText.includes('уваж') || headerText.includes('неуваж')) {
-      continue;
-    }
-
-    if (headerText.includes('пропуски')) {
+    if (isSummaryHeader(headerText)) {
       continue;
     }
 
@@ -935,7 +982,8 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
     }
 
     const range = XLSX.utils.decode_range(ref);
-    const { averageCol } = findSummaryColumns(sheet, range.e.c + 1);
+    const maxColumn = range.e.c + 1;
+    const { averageCol, summaryColumns } = findSummaryColumns(sheet, maxColumn);
 
     if (!averageCol) {
       continue;
@@ -947,7 +995,7 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
     const resolvedRows = roster.students
       .map((studentName, index) => rowResolver(studentName, index))
       .filter((row): row is number => row !== null);
-    const lessonColumns = buildLessonColumns(sheet, averageCol, resolvedRows);
+    const lessonColumns = buildLessonColumns(sheet, maxColumn, summaryColumns, resolvedRows);
     const lessonTopics = parseLessonTopics(sheet);
 
     subjectMeta.push({
