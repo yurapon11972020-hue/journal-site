@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { CSSProperties, useMemo, useState } from 'react';
 
+import SubjectTabs from '@/components/subject-tabs';
 import { classifyMarkValue, markToneToClass } from '@/lib/mark-classifier';
 import type { GradeEntry, JournalData, LessonTopic, ReportCard } from '@/lib/types';
 import { useTheme } from '@/lib/use-theme';
@@ -400,26 +401,14 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
         />
       </section>
 
-      <section className="tab-row" aria-label="Разделы журнала">
-        <button
-          type="button"
-          className={`tab-chip ${activeTab === 'report-cards' ? 'tab-chip--active' : ''}`}
-          onClick={() => setActiveTab('report-cards')}
-        >
-          Табели
-        </button>
-        {subjectAggregates.map((subject) => (
-          <button
-            type="button"
-            key={subject.id}
-            className={`tab-chip ${activeTab === subject.id ? 'tab-chip--active' : ''}`}
-            onClick={() => setActiveTab(subject.id)}
-            title={subject.subjectName}
-          >
-            {subject.subjectName}
-          </button>
-        ))}
-      </section>
+      <SubjectTabs
+        items={[
+          { id: 'report-cards', label: 'Табели' },
+          ...subjectAggregates.map((subject) => ({ id: subject.id, label: subject.subjectName })),
+        ]}
+        activeId={activeTab}
+        onSelect={setActiveTab}
+      />
 
       {activeTab === 'report-cards' ? (
         <section className="cards-stack">

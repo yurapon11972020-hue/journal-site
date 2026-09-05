@@ -415,46 +415,75 @@ html[data-theme='light'] .stat-card--warning .stat-card__value {
 }
 
 /* ---------------- Вкладки разделов ---------------- */
-.tab-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* На широком экране — крупные плитки в сетке, как было.
+   На узком (телефон и мини-приложение Telegram) — лента с прокруткой вбок. */
+.subject-tabs {
+  position: relative;
   margin-bottom: 18px;
 }
 
-.tab-row .tab-chip {
-  min-height: 42px;
-  width: auto;
-  padding: 9px 18px;
-  border-radius: 999px;
+.subject-tabs__track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.subject-tabs__track .tab-chip {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   font-weight: 600;
-  font-size: 0.95rem;
-  white-space: nowrap;
+  line-height: 1.25;
   transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
 
-.tab-row .tab-chip--active {
+.subject-tabs__track .tab-chip--active {
   border-color: var(--accent);
   background: var(--accent);
   color: #06122a;
 }
 
-html[data-theme='light'] .tab-row .tab-chip--active {
+html[data-theme='light'] .subject-tabs__track .tab-chip--active {
   color: #ffffff;
 }
 
-/* ---------------- Ширина колонки с содержимым ---------------- */
-/* На широком экране строки растягивались на всю ширину, и содержимое
-   расползалось по краям. Ограничиваем читаемую колонку одной величиной,
-   а таблицу предмета оставляем во всю ширину — ей нужно место под даты. */
-.page-header,
-.stat-grid,
-.tab-row,
-.cards-stack,
-.toolbar-row {
-  max-width: 1180px;
+/* Стрелки нужны там, где ленту не прокрутить пальцем: мини-приложение на компьютере. */
+.subject-tabs__arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  display: none;
+  width: 34px;
+  height: 34px;
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow);
 }
 
+.subject-tabs__arrow--left {
+  left: -4px;
+}
+
+.subject-tabs__arrow--right {
+  right: -4px;
+}
+
+.subject-tabs__arrow:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+/* ---------------- Панель поиска и сортировки ---------------- */
 .toolbar-row {
   padding: 14px 16px;
   border: 1px solid var(--border);
@@ -515,26 +544,6 @@ select:focus-visible,
   .stat-card__label,
   .stat-card__hint {
     font-size: 0.72rem;
-  }
-
-  /* Вкладки — одна строка с прокруткой вместо двух рядов кнопок. */
-  .tab-row {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    margin-inline: -14px;
-    padding-inline: 14px;
-    scroll-snap-type: x proximity;
-  }
-
-  .tab-row::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tab-row .tab-chip {
-    scroll-snap-align: start;
-    font-size: 0.9rem;
-    padding: 8px 15px;
   }
 
   .toolbar-row {
@@ -620,4 +629,95 @@ html[data-theme='light'] .login-card__submit {
 
 .login-card__submit:hover {
   filter: brightness(1.06);
+}
+
+/* ---------------- Лента вкладок на узком экране ---------------- */
+/* Телефон и окно мини-приложения Telegram. Плитки остаются крупными,
+   но выстраиваются в одну строку с прокруткой вбок. */
+@media (max-width: 760px) {
+  .subject-tabs__track {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 4px;
+    /* Небольшой правый отступ, чтобы следующая плитка выглядывала краем. */
+    padding-right: 28px;
+    overscroll-behavior-x: contain;
+  }
+
+  .subject-tabs__track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .subject-tabs__track .tab-chip {
+    flex: 0 0 auto;
+    width: clamp(148px, 46vw, 215px);
+    min-height: 60px;
+    padding: 10px 14px;
+    scroll-snap-align: start;
+    white-space: normal;
+  }
+
+  /* Затемнение по краям — видно, что лента продолжается. */
+  .subject-tabs::before,
+  .subject-tabs::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 44px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.18s ease;
+    z-index: 3;
+  }
+
+  .subject-tabs::before {
+    left: 0;
+    background: linear-gradient(90deg, var(--bg) 15%, transparent);
+  }
+
+  .subject-tabs::after {
+    right: 0;
+    background: linear-gradient(270deg, var(--bg) 15%, transparent);
+  }
+
+  .subject-tabs--more-left::before,
+  .subject-tabs--more-right::after {
+    opacity: 1;
+  }
+
+}
+
+/* Стрелки — только там, где нечем свайпнуть: мышь и точный курсор.
+   На телефоне лента листается пальцем, и стрелки только мешали бы. */
+@media (max-width: 760px) and (hover: hover) and (pointer: fine) {
+  /* Отводим место по краям, чтобы стрелки не наезжали на названия предметов. */
+  .subject-tabs {
+    padding-inline: 40px;
+  }
+
+  .subject-tabs__arrow--left {
+    left: 0;
+  }
+
+  .subject-tabs__arrow--right {
+    right: 0;
+  }
+
+  .subject-tabs::before {
+    left: 40px;
+  }
+
+  .subject-tabs::after {
+    right: 40px;
+  }
+
+  .subject-tabs--more-left .subject-tabs__arrow--left,
+  .subject-tabs--more-right .subject-tabs__arrow--right {
+    display: flex;
+  }
 }
