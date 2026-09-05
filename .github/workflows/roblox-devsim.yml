@@ -1,0 +1,85 @@
+name: Roblox — сборка и публикация места
+
+# Что делает:
+#  1. проверяет синтаксис всех Lua-файлов;
+#  2. собирает roblox-devsim/build/DevSim.rbxlx;
+#  3. кладёт готовый файл в артефакты сборки (скачать можно во вкладке Actions);
+#  4. если заданы секреты — САМ публикует игру в Roblox, ничего заливать руками не надо.
+#
+# Секреты (Settings -> Secrets and variables -> Actions -> New repository secret):
+#   ROBLOX_API_KEY      — ключ Open Cloud с правом "Place Management: write"
+#   ROBLOX_UNIVERSE_ID  — ID вселенной (Experience ID)
+#   ROBLOX_PLACE_ID     — ID места (Place ID)
+# Пока секретов нет — шаг публикации просто пропускается, сборка всё равно работает.
+
+on:
+  push:
+    paths:
+      - 'roblox-devsim/**'
+      - '.github/workflows/roblox-devsim.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Публиковать в Roblox (если заданы секреты)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Проверка синтаксиса Lua
+        run: |
+          npm install --no-save --no-audit --no-fund luaparse
+          node roblox-devsim/tools/check_lua.js roblox-devsim/src
+
+      - name: Сборка места
+        run: python3 roblox-devsim/tools/build_place.py --out build/DevSim.rbxlx
+
+      - name: Готовый файл в артефакты
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevSim-place
+          path: build/DevSim.rbxlx
+          if-no-files-found: error
+
+      - name: Публикация в Roblox (Open Cloud)
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ secrets.ROBLOX_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ secrets.ROBLOX_PLACE_ID }}
+        run: |
+          if [ -z "$ROBLOX_API_KEY" ] || [ -z "$ROBLOX_UNIVERSE_ID" ] || [ -z "$ROBLOX_PLACE_ID" ]; then
+            echo "::notice::Секреты Roblox не заданы — публикацию пропускаю."
+            echo "Как включить автопубликацию: roblox-devsim/docs/АВТОПУБЛИКАЦИЯ.md"
+            exit 0
+          fi
+
+          url="https://apis.roblox.com/universes/v1/${ROBLOX_UNIVERSE_ID}/places/${ROBLOX_PLACE_ID}/versions?versionType=Published"
+          code=$(curl -sS -o response.json -w '%{http_code}' -X POST "$url" \
+            -H "x-api-key: ${ROBLOX_API_KEY}" \
+            -H "Content-Type: application/xml" \
+            --data-binary @build/DevSim.rbxlx)
+
+          echo "HTTP $code"
+          cat response.json || true
+          echo
+
+          if [ "$code" != "200" ]; then
+            echo "::error::Roblox отклонил публикацию (HTTP $code). Проверь ключ, права ключа и ID."
+            exit 1
+          fi
+          echo "::notice::Игра опубликована. Заходи и проверяй!"

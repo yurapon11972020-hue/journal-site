@@ -1,0 +1,22 @@
+{
+  "name": "DevSim",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "DevSim": {
+        "$path": "src/shared"
+      }
+    },
+
+    "ServerScriptService": {
+      "$path": "src/server"
+    },
+
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "src/client"
+      }
+    }
+  }
+}
