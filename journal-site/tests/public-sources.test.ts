@@ -80,6 +80,27 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
   throw new Error(`Неожиданный запрос в тесте: ${input}`);
 });
 
+/**
+ * Помечает скачанную копию устаревшей, чтобы следующий запрос скачал файл заново.
+ * Через маленький JOURNAL_CACHE_INTERVAL_MINUTES это делать нельзя: тогда
+ * фоновый цикл обновления срабатывает каждые несколько миллисекунд и гонится с тестом.
+ */
+async function expireCachedCopy(): Promise<void> {
+  const dirs = (await fs.readdir(cacheRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory());
+
+  for (const dir of dirs) {
+    const metaPath = path.join(cacheRoot, dir.name, 'latest.json');
+    const meta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as {
+      downloadedAt: string;
+      versions: Array<{ downloadedAt: string }>;
+    };
+
+    meta.downloadedAt = new Date(0).toISOString();
+    meta.versions = meta.versions.map((version) => ({ ...version, downloadedAt: new Date(0).toISOString() }));
+    await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
+  }
+}
+
 function resetRuntime(): void {
   const runtime = globalThis.__journalPublicCacheRuntime;
   if (runtime?.interval) {
@@ -220,8 +241,7 @@ describe('загрузка журнала группы', () => {
     const groups = await listJournalFiles();
     await loadJournalFile(groups[0].filePath);
 
-    process.env.JOURNAL_CACHE_INTERVAL_MINUTES = '0.0001';
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await expireCachedCopy();
     downloadFails = true;
 
     const stale = await loadJournalFile(groups[0].filePath);
@@ -230,13 +250,11 @@ describe('загрузка журнала группы', () => {
 
   it('хранит не больше JOURNAL_CACHE_MAX_FILES копий на группу', async () => {
     process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    process.env.JOURNAL_CACHE_INTERVAL_MINUTES = '0.0001';
 
     const groups = await listJournalFiles();
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 15));
-      resetRuntime();
       await loadJournalFile(groups[0].filePath);
+      await expireCachedCopy();
     }
 
     const dirs = (await fs.readdir(cacheRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory());
