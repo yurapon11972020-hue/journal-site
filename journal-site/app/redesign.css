@@ -16,8 +16,8 @@ html[data-theme='dark'] {
   --accent-strong: #a7c8ff;
   --brick: #e8915a;
   --shadow: 0 18px 50px rgba(2, 8, 22, 0.45);
-  --font-display: 'Unbounded', 'Manrope', system-ui, sans-serif;
-  --font-body: 'Manrope', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-unbounded), var(--font-manrope), system-ui, sans-serif;
+  --font-body: var(--font-manrope), system-ui, -apple-system, sans-serif;
 }
 
 html[data-theme='light'] {
@@ -298,4 +298,326 @@ body {
   background: var(--panel);
   color: var(--muted);
   text-align: center;
+}
+
+/* ============================================================
+   Второй проход по дизайну: иерархия, плотность, фокус, телефон
+   ============================================================ */
+
+/* ---------------- Шапка страницы группы ---------------- */
+.page-header {
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.page-header__main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.page-header__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.theme-toggle--link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.back-link {
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.page-header .eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* ---------------- Плитки показателей ---------------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.stat-card {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* Тонкая цветная полоса вместо заливки всей плитки: спокойнее и читаемее. */
+.stat-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.stat-card__label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.stat-card__value {
+  font-family: var(--font-display);
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.stat-card__hint {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.stat-card--good::before {
+  background: #34d399;
+}
+
+.stat-card--warning::before {
+  background: #f87171;
+}
+
+.stat-card--warning .stat-card__value {
+  color: #fca5a5;
+}
+
+html[data-theme='light'] .stat-card--warning .stat-card__value {
+  color: #b91c1c;
+}
+
+/* ---------------- Вкладки разделов ---------------- */
+.tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.tab-row .tab-chip {
+  min-height: 42px;
+  width: auto;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+
+.tab-row .tab-chip--active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #06122a;
+}
+
+html[data-theme='light'] .tab-row .tab-chip--active {
+  color: #ffffff;
+}
+
+/* ---------------- Ширина колонки с содержимым ---------------- */
+/* На широком экране строки растягивались на всю ширину, и содержимое
+   расползалось по краям. Ограничиваем читаемую колонку одной величиной,
+   а таблицу предмета оставляем во всю ширину — ей нужно место под даты. */
+.page-header,
+.stat-grid,
+.tab-row,
+.cards-stack,
+.toolbar-row {
+  max-width: 1180px;
+}
+
+.toolbar-row {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.toolbar-note {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+/* ---------------- Фокус с клавиатуры ---------------- */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* ---------------- Телефон ---------------- */
+@media (max-width: 640px) {
+  .page-header {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .page-header__actions {
+    width: 100%;
+  }
+
+  .page-header__actions .theme-toggle {
+    flex: 1 1 auto;
+    text-align: center;
+    justify-content: center;
+  }
+
+  /* Показатели ужимаем: иначе они занимают весь первый экран. */
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .stat-card {
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .stat-card__value {
+    font-size: 1.3rem;
+  }
+
+  .stat-card__label,
+  .stat-card__hint {
+    font-size: 0.72rem;
+  }
+
+  /* Вкладки — одна строка с прокруткой вместо двух рядов кнопок. */
+  .tab-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: -14px;
+    padding-inline: 14px;
+    scroll-snap-type: x proximity;
+  }
+
+  .tab-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-row .tab-chip {
+    scroll-snap-align: start;
+    font-size: 0.9rem;
+    padding: 8px 15px;
+  }
+
+  .toolbar-row {
+    padding: 12px;
+  }
+}
+
+/* ---------------- Страница входа по коду ---------------- */
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-card {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 380px);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.login-card__title {
+  margin: 2px 0 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.login-card__hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.login-card__label {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.login-card__input {
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-alt);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.login-card__error {
+  margin: 6px 0 0;
+  color: #fca5a5;
+  font-size: 0.88rem;
+}
+
+html[data-theme='light'] .login-card__error {
+  color: #b91c1c;
+}
+
+.login-card__submit {
+  margin-top: 12px;
+  min-height: 46px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent);
+  color: #06122a;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+html[data-theme='light'] .login-card__submit {
+  color: #ffffff;
+}
+
+.login-card__submit:hover {
+  filter: brightness(1.06);
 }

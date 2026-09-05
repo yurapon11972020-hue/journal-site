@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import type { JournalGroupRef } from '@/lib/types';
+import { useTheme } from '@/lib/use-theme';
 
 interface GroupsDashboardProps {
   groups: JournalGroupRef[];
@@ -30,20 +31,8 @@ function groupsWord(count: number): string {
 }
 
 export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const { theme, toggleTheme } = useTheme();
   const [query, setQuery] = useState('');
-
-  useEffect(() => {
-    const savedTheme = window.localStorage.getItem('journal-theme');
-    if (savedTheme === 'light' || savedTheme === 'dark') {
-      setTheme(savedTheme);
-    }
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem('journal-theme', theme);
-  }, [theme]);
 
   const showSearch = groups.length >= SEARCH_THRESHOLD;
 
@@ -77,7 +66,7 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
             <button
               type="button"
               className="hero__btn"
-              onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+              onClick={toggleTheme}
             >
               {theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная'}
             </button>

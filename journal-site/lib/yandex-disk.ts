@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-import { basenameFromFilePath, filenameToGroupName, groupPathToId } from '@/lib/group-files';
+import { basenameFromFilePath, filenameToGroupName, groupPathToPublicId } from '@/lib/group-files';
 import type { JournalFileResult, JournalGroupRef, JournalSource } from '@/lib/types';
 
 const PRIVATE_DOWNLOAD_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/resources/download';
@@ -81,7 +81,6 @@ interface PublicJournalCacheRuntime {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __journalPublicCacheRuntime: PublicJournalCacheRuntime | undefined;
 }
 
@@ -109,7 +108,7 @@ function isSpreadsheetFile(fileName: string): boolean {
 function buildGroupRef(source: JournalSource, filePath: string, fileName?: string, groupName?: string): JournalGroupRef {
   const resolvedFileName = fileName || basenameFromFilePath(filePath);
   return {
-    id: groupPathToId(filePath),
+    id: groupPathToPublicId(filePath),
     groupName: groupName?.trim() || filenameToGroupName(resolvedFileName),
     fileName: resolvedFileName,
     filePath,
