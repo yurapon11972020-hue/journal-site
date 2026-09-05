@@ -592,9 +592,9 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                       </th>
                     );
                   })}
-                  <th>Средний</th>
-                  <th>Уваж.</th>
-                  <th>Неуваж.</th>
+                  <th className="summary-col">Средний</th>
+                  <th className="summary-col">Уваж.</th>
+                  <th className="summary-col">Неуваж.</th>
                 </tr>
               </thead>
               <tbody>
@@ -613,9 +613,9 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                           </td>
                         );
                       })}
-                      <td className="center-cell"><MarkBadge value={student.average} /></td>
-                      <td className="center-cell"><AbsenceBadge value={student.absences.valid} type="valid" /></td>
-                      <td className="center-cell"><AbsenceBadge value={student.absences.invalid} type="invalid" /></td>
+                      <td className="center-cell summary-col"><MarkBadge value={student.average} /></td>
+                      <td className="center-cell summary-col"><AbsenceBadge value={student.absences.valid} type="valid" /></td>
+                      <td className="center-cell summary-col"><AbsenceBadge value={student.absences.invalid} type="invalid" /></td>
                     </tr>
                   );
                 })}

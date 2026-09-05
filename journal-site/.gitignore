@@ -13,6 +13,7 @@ build/
 journal-cache/
 data/
 .test-data/
+.test-many/
 .libtest/
 
 # переменные окружения

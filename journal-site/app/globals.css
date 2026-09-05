@@ -165,7 +165,7 @@ select {
 }
 
 .table-wrap--subject {
-  overflow-x: clip;
+  overflow-x: auto;
 }
 
 .journal-table {
@@ -179,7 +179,12 @@ select {
   --num-width: 3rem;
   --name-width: clamp(10rem, 21vw, 16rem);
   --summary-width: clamp(3.5rem, 4.4vw, 4.5rem);
+  --lesson-width: 3.4rem;
   min-width: 0;
+  /* Ширина по содержимому, а не на весь контейнер: иначе при двух-трёх
+     занятиях браузер раздаёт лишнюю ширину клеткам с оценками, и они
+     растягиваются на пол-экрана. */
+  width: auto;
   table-layout: fixed;
   font-size: clamp(0.68rem, 0.82vw, 0.94rem);
 }
@@ -223,8 +228,8 @@ select {
 }
 
 .lesson-head {
-  width: clamp(2rem, calc((100% - var(--num-width) - var(--name-width) - (3 * var(--summary-width))) / var(--lesson-count)), 3.6rem);
-  min-width: 0;
+  width: var(--lesson-width);
+  min-width: var(--lesson-width);
   text-align: center;
   padding: 6px 2px !important;
   white-space: nowrap;
@@ -289,8 +294,8 @@ select {
 }
 
 .lesson-cell {
-  width: clamp(2rem, calc((100% - var(--num-width) - var(--name-width) - (3 * var(--summary-width))) / var(--lesson-count)), 3.6rem);
-  min-width: 0;
+  width: var(--lesson-width);
+  min-width: var(--lesson-width);
   padding: 6px 2px !important;
   font-weight: 600;
 }
@@ -314,14 +319,10 @@ select {
   white-space: normal;
 }
 
-.subject-table thead th:last-child,
-.subject-table thead th:nth-last-child(2),
-.subject-table thead th:nth-last-child(3),
-.subject-table tbody td:last-child,
-.subject-table tbody td:nth-last-child(2),
-.subject-table tbody td:nth-last-child(3) {
+.subject-table .summary-col {
   width: var(--summary-width);
 }
+
 
 @media (max-width: 900px) {
   .table-wrap--subject {
@@ -352,13 +353,12 @@ select {
     --num-width: 2.6rem;
     --name-width: 11rem;
     --summary-width: 3.5rem;
-    min-width: calc(var(--num-width) + var(--name-width) + (3 * var(--summary-width)) + (var(--lesson-count) * 2.7rem));
+    min-width: calc(var(--num-width) + var(--name-width) + (3 * var(--summary-width)) + (var(--lesson-count) * var(--lesson-width)));
     font-size: 0.8rem;
   }
 
-  .subject-table .lesson-head,
-  .subject-table .lesson-cell {
-    width: 2.7rem;
+  .subject-table {
+    --lesson-width: 2.7rem;
   }
 
   .lesson-topics__list {
