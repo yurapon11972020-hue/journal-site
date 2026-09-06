@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>С Днём Рождения</title>
+<meta name="description" content="Поздравление с днём рождения — 17 сентября">
+<meta name="theme-color" content="#0d0d0f">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8E%80%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+<div class="grain" aria-hidden="true"></div>
+<div class="petals" id="petals" aria-hidden="true"></div>
+
+<!-- ============ HERO ============ -->
+<header class="hero" id="hero">
+  <div class="hero__glow" aria-hidden="true"></div>
+
+  <div class="hero__polaroids" id="heroPolaroids" aria-hidden="true"></div>
+
+  <div class="hero__inner">
+    <p class="hero__date reveal">17 &middot; 09</p>
+    <h1 class="hero__title">
+      <span class="reveal" style="--d:.05s">С Днём</span>
+      <span class="reveal" style="--d:.15s">Рождения,</span>
+      <span class="hero__name reveal" style="--d:.25s" id="heroName">Имя</span>
+    </h1>
+    <p class="hero__sub reveal" style="--d:.4s">
+      маленький сайт, собранный вручную <br>
+      специально для тебя
+    </p>
+    <div class="hero__scroll reveal" style="--d:.6s">
+      <span></span>
+      <em>листай вниз</em>
+    </div>
+  </div>
+</header>
+
+<!-- ============ ОБРАТНЫЙ ОТСЧЁТ ============ -->
+<section class="countdown section--dark" id="countdown">
+  <p class="eyebrow reveal">до праздника осталось</p>
+  <div class="countdown__grid reveal" style="--d:.1s" id="countdownGrid">
+    <div class="cd"><b id="cdD">--</b><i>дней</i></div>
+    <div class="cd__sep">:</div>
+    <div class="cd"><b id="cdH">--</b><i>часов</i></div>
+    <div class="cd__sep">:</div>
+    <div class="cd"><b id="cdM">--</b><i>минут</i></div>
+    <div class="cd__sep">:</div>
+    <div class="cd"><b id="cdS">--</b><i>секунд</i></div>
+  </div>
+  <p class="countdown__today" id="cdToday" hidden>Сегодня тот самый день 🤍</p>
+</section>
+
+<!-- ============ ПИСЬМО ============ -->
+<section class="letter" id="letter">
+  <div class="letter__card reveal">
+    <span class="letter__tape letter__tape--l" aria-hidden="true"></span>
+    <span class="letter__tape letter__tape--r" aria-hidden="true"></span>
+
+    <p class="letter__hi">Привет 🤍</p>
+    <p>
+      Мы столько лет сидим в одном классе, что уже сложно вспомнить, каким он был
+      без тебя. Поэтому вместо открытки — вот это: несколько экранов, собранных
+      специально к <b>17 сентября</b>.
+    </p>
+    <p>
+      Ты из тех людей, рядом с которыми обычный день становится нормальным,
+      а плохой — терпимым. Спасибо, что ты просто есть.
+    </p>
+    <p class="letter__sign">С днём рождения. <span>— Тимофей</span></p>
+  </div>
+</section>
+
+<!-- ============ ПОЛАРОИДЫ ============ -->
+<section class="gallery section--dark" id="gallery">
+  <div class="section__head">
+    <p class="eyebrow reveal">кадры</p>
+    <h2 class="reveal" style="--d:.1s">Несколько моментов</h2>
+  </div>
+  <div class="gallery__grid" id="galleryGrid"></div>
+  <p class="gallery__note reveal">каждый снимок можно открыть — просто нажми</p>
+</section>
+
+<!-- ============ ПОЖЕЛАНИЯ ============ -->
+<section class="wishes" id="wishes">
+  <div class="section__head">
+    <p class="eyebrow reveal">и немного пожеланий</p>
+    <h2 class="reveal" style="--d:.1s">Коротко, но честно</h2>
+  </div>
+
+  <ol class="wishes__list" id="wishesList"></ol>
+</section>
+
+<!-- ============ ФИНАЛ ============ -->
+<footer class="finale section--dark" id="finale">
+  <div class="finale__heart reveal" aria-hidden="true">
+    <svg viewBox="0 0 32 29" width="42" height="38"><path d="M16 29S0 18.6 0 9.3C0 4.1 3.9 0 8.8 0 12 0 14.7 1.8 16 4.4 17.3 1.8 20 0 23.2 0 28.1 0 32 4.1 32 9.3 32 18.6 16 29 16 29z"/></svg>
+  </div>
+  <p class="finale__line reveal" style="--d:.1s">Пусть этот год будет твоим.</p>
+  <p class="finale__sign reveal" style="--d:.2s">Тимофей</p>
+  <p class="finale__date reveal" style="--d:.3s">17 сентября</p>
+</footer>
+
+<!-- ============ ЛАЙТБОКС ============ -->
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lightbox__close" id="lightboxClose" aria-label="Закрыть">&times;</button>
+  <figure class="lightbox__frame">
+    <img id="lightboxImg" alt="">
+    <figcaption id="lightboxCap"></figcaption>
+  </figure>
+</div>
+
+<script src="config.js"></script>
+<script src="script.js"></script>
+</body>
+</html>

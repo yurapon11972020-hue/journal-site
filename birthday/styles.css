@@ -1,0 +1,434 @@
+/* =========================================================
+   Палитра: чёрный · белый · розовый
+   ========================================================= */
+:root {
+  --ink:        #0c0c0e;
+  --ink-soft:   #17171b;
+  --paper:      #fbf8f9;
+  --paper-warm: #f4eef1;
+  --pink:       #ff4d93;
+  --pink-deep:  #d81f6a;
+  --pink-soft:  #ffd7e6;
+  --pink-mist:  #fff0f5;
+  --gray:       #8b8b93;
+
+  --serif:  'Cormorant Garamond', Georgia, serif;
+  --sans:   'Inter', system-ui, -apple-system, sans-serif;
+  --script: 'Caveat', 'Segoe Script', cursive;
+
+  --ease: cubic-bezier(.22,.61,.36,1);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1, h2 { margin: 0; font-weight: 400; letter-spacing: -.02em; }
+p  { margin: 0; }
+
+/* ---------- зерно поверх всего ---------- */
+.grain {
+  position: fixed; inset: 0; z-index: 9000; pointer-events: none;
+  opacity: .5; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
+}
+
+/* ---------- лепестки ---------- */
+.petals { position: fixed; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.petal {
+  position: absolute; top: -8vh; border-radius: 60% 40% 55% 45%;
+  background: var(--pink-soft); opacity: .5;
+  animation: fall linear infinite;
+}
+@keyframes fall {
+  0%   { transform: translate3d(0,-10vh,0) rotate(0deg); }
+  100% { transform: translate3d(var(--dx,4vw),110vh,0) rotate(420deg); }
+}
+
+/* ---------- появление при скролле ---------- */
+.reveal {
+  opacity: 0; transform: translateY(26px);
+  transition: opacity .9s var(--ease) var(--d,0s), transform .9s var(--ease) var(--d,0s);
+}
+.reveal.is-in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1 !important; transform: none !important; }
+  .petals { display: none; }
+  html { scroll-behavior: auto; }
+}
+
+/* ---------- секции ---------- */
+section, header, footer { position: relative; z-index: 2; }
+
+.section--dark {
+  background: var(--ink);
+  color: var(--paper);
+}
+.section--dark .eyebrow { color: var(--pink); }
+
+.section__head {
+  max-width: 1100px; margin: 0 auto;
+  padding: 0 24px 46px;
+  text-align: center;
+}
+.section__head h2 {
+  font-family: var(--serif);
+  font-size: clamp(2rem, 6vw, 3.6rem);
+  font-style: italic;
+  font-weight: 300;
+}
+
+.eyebrow {
+  font-size: .68rem; letter-spacing: .34em; text-transform: uppercase;
+  color: var(--pink-deep); margin-bottom: 14px; font-weight: 600;
+}
+
+/* =========================================================
+   HERO
+   ========================================================= */
+.hero {
+  min-height: 100svh;
+  background: var(--ink);
+  color: var(--paper);
+  display: grid; place-items: center;
+  overflow: hidden;
+  padding: 90px 24px;
+}
+.hero__glow {
+  position: absolute; left: 50%; top: 42%;
+  width: 130vmax; height: 130vmax; transform: translate(-50%,-50%);
+  background: radial-gradient(circle,
+      rgba(255,77,147,.30) 0%,
+      rgba(255,77,147,.10) 28%,
+      rgba(255,77,147,0) 58%);
+  pointer-events: none;
+  animation: breathe 9s ease-in-out infinite;
+}
+@keyframes breathe { 0%,100%{transform:translate(-50%,-50%) scale(1)} 50%{transform:translate(-50%,-50%) scale(1.12)} }
+
+.hero__inner { position: relative; z-index: 3; text-align: center; max-width: 900px; }
+
+.hero__date {
+  font-family: var(--sans);
+  font-size: .8rem; letter-spacing: .55em; text-indent: .55em;
+  color: var(--pink); margin-bottom: 28px; font-weight: 600;
+}
+
+.hero__title {
+  font-family: var(--serif);
+  font-size: clamp(2.9rem, 11vw, 7rem);
+  line-height: .96;
+  font-weight: 300;
+}
+.hero__title span { display: block; }
+.hero__name {
+  font-family: var(--script);
+  font-size: clamp(4.4rem, 20vw, 10.5rem);
+  line-height: 1;
+  color: var(--pink);
+  margin-top: .12em;
+  text-shadow: 0 0 44px rgba(255,77,147,.45);
+}
+
+.hero__sub {
+  margin-top: 34px;
+  font-size: clamp(.9rem, 2.3vw, 1.05rem);
+  line-height: 1.85;
+  color: rgba(251,248,249,.62);
+  font-weight: 300;
+}
+
+.hero__scroll { margin-top: 56px; display: grid; justify-items: center; gap: 12px; }
+.hero__scroll span {
+  width: 1px; height: 56px;
+  background: linear-gradient(var(--pink), transparent);
+  animation: drop 2.1s ease-in-out infinite;
+}
+@keyframes drop { 0%,100%{opacity:.25; transform:scaleY(.5)} 50%{opacity:1; transform:scaleY(1)} }
+.hero__scroll em {
+  font-style: normal; font-size: .62rem; letter-spacing: .3em;
+  text-transform: uppercase; color: rgba(251,248,249,.38);
+}
+
+/* поляроиды, разбросанные по герою */
+.hero__polaroids { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.hero__polaroids .polaroid {
+  position: absolute; width: 168px; pointer-events: auto;
+  animation: float 7s ease-in-out infinite;
+}
+.hero__polaroids .polaroid:nth-child(1) { left: 5%;  top: 16%; animation-delay: 0s;   }
+.hero__polaroids .polaroid:nth-child(2) { right: 6%; top: 24%; animation-delay: -2.3s;}
+.hero__polaroids .polaroid:nth-child(3) { left: 11%; bottom: 12%; animation-delay: -4.6s;}
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-16px)} }
+
+@media (max-width: 1080px) { .hero__polaroids { display: none; } }
+
+/* =========================================================
+   ПОЛАРОИД
+   ========================================================= */
+.polaroid {
+  --tilt: 0deg;
+  background: #fff;
+  padding: 12px 12px 0;
+  border-radius: 2px;
+  box-shadow:
+     0 2px 4px rgba(0,0,0,.14),
+     0 18px 40px rgba(0,0,0,.30);
+  transform: rotate(var(--tilt));
+  transition: transform .5s var(--ease), box-shadow .5s var(--ease);
+  display: block; width: 100%; border: 0; text-align: center;
+  font: inherit; color: inherit; cursor: pointer;
+  position: relative;
+}
+.polaroid::after {           /* скотч сверху */
+  content: '';
+  position: absolute; top: -13px; left: 50%; transform: translateX(-50%) rotate(-2deg);
+  width: 74px; height: 26px;
+  background: rgba(255,214,230,.55);
+  border-left: 1px dashed rgba(255,255,255,.6);
+  border-right: 1px dashed rgba(255,255,255,.6);
+  box-shadow: 0 1px 3px rgba(0,0,0,.10);
+}
+.polaroid:hover, .polaroid:focus-visible {
+  transform: rotate(0deg) translateY(-10px) scale(1.035);
+  box-shadow: 0 4px 8px rgba(0,0,0,.16), 0 30px 60px rgba(255,77,147,.28);
+  outline: none;
+}
+.polaroid__frame {
+  aspect-ratio: 1 / 1;
+  background: var(--pink-mist);
+  overflow: hidden;
+  display: grid; place-items: center;
+  filter: grayscale(.15);
+  transition: filter .5s var(--ease);
+}
+.polaroid:hover .polaroid__frame { filter: grayscale(0); }
+.polaroid__frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* пустая рамка-заглушка */
+.polaroid--empty { cursor: default; }
+.polaroid--empty::after { background: rgba(230,230,235,.7); }
+.polaroid--empty:hover { transform: rotate(var(--tilt)); box-shadow: 0 2px 4px rgba(0,0,0,.14), 0 18px 40px rgba(0,0,0,.30); }
+.polaroid--empty .polaroid__frame {
+  background:
+    repeating-linear-gradient(45deg, #fff 0 12px, var(--pink-mist) 12px 24px);
+  border: 1.5px dashed var(--pink-soft);
+}
+.ph { display: grid; gap: 8px; justify-items: center; color: var(--pink-deep); opacity: .55; }
+.ph svg { display: block; }
+.ph b { font-size: .6rem; letter-spacing: .22em; text-transform: uppercase; font-weight: 600; }
+
+.polaroid__cap {
+  font-family: var(--script);
+  font-size: 1.32rem;
+  color: #2a2a30;
+  padding: 10px 6px 16px;
+  min-height: 52px;
+  display: grid; place-items: center;
+  line-height: 1;
+}
+
+/* =========================================================
+   ОБРАТНЫЙ ОТСЧЁТ
+   ========================================================= */
+.countdown { padding: 96px 24px; text-align: center; }
+.countdown__grid {
+  display: flex; align-items: flex-start; justify-content: center;
+  gap: clamp(6px, 2.4vw, 24px);
+  margin-top: 8px;
+}
+.cd { display: grid; gap: 8px; min-width: clamp(56px, 15vw, 104px); }
+.cd b {
+  font-family: var(--serif);
+  font-size: clamp(2.4rem, 9vw, 4.6rem);
+  font-weight: 300; line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'lnum' 1, 'tnum' 1;
+}
+.cd i {
+  font-style: normal; font-size: .58rem; letter-spacing: .26em;
+  text-transform: uppercase; color: var(--gray);
+}
+.cd__sep {
+  font-family: var(--serif);
+  font-size: clamp(1.6rem, 6vw, 3.2rem);
+  color: var(--pink); line-height: 1.1;
+}
+.countdown__today {
+  font-family: var(--script);
+  font-size: clamp(1.8rem, 6vw, 3rem);
+  color: var(--pink);
+}
+
+/* =========================================================
+   ПИСЬМО
+   ========================================================= */
+.letter {
+  padding: clamp(80px, 12vw, 140px) 24px;
+  background:
+    radial-gradient(ellipse at 20% 0%, var(--pink-mist), transparent 60%),
+    var(--paper);
+  display: grid; place-items: center;
+}
+.letter__card {
+  position: relative;
+  max-width: 640px;
+  background: #fff;
+  padding: clamp(38px, 7vw, 64px) clamp(26px, 6vw, 58px);
+  box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 26px 60px rgba(216,31,106,.13);
+  border-radius: 3px;
+}
+.letter__tape {
+  position: absolute; top: -14px; width: 96px; height: 30px;
+  background: rgba(255,214,230,.75);
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.letter__tape--l { left: 26px;  transform: rotate(-6deg); }
+.letter__tape--r { right: 26px; transform: rotate(5deg);  }
+
+.letter__card p {
+  font-family: var(--serif);
+  font-size: clamp(1.12rem, 2.7vw, 1.42rem);
+  line-height: 1.72;
+  color: #26262c;
+  margin-bottom: 1.05em;
+}
+.letter__card b {
+  font-weight: 500; color: var(--pink-deep);
+  font-variant-numeric: lining-nums;
+  font-feature-settings: 'lnum' 1;
+}
+.letter__hi {
+  font-family: var(--script) !important;
+  font-size: clamp(1.9rem, 6vw, 2.5rem) !important;
+  color: var(--pink) !important;
+  margin-bottom: .5em !important;
+}
+.letter__sign {
+  margin: 1.6em 0 0 !important;
+  padding-top: 1.2em;
+  border-top: 1px solid var(--pink-soft);
+  font-style: italic;
+}
+.letter__sign span {
+  font-family: var(--script); font-style: normal;
+  font-size: 1.5em; color: var(--pink-deep);
+  display: inline-block; margin-left: .35em;
+}
+
+/* =========================================================
+   ГАЛЕРЕЯ
+   ========================================================= */
+.gallery { padding: clamp(80px, 12vw, 130px) 24px; }
+.gallery__grid {
+  max-width: 1080px; margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: clamp(34px, 5vw, 58px);
+}
+.gallery__grid > * { max-width: 320px; width: 100%; justify-self: center; }
+.gallery__note {
+  text-align: center; margin-top: 56px;
+  font-size: .68rem; letter-spacing: .24em; text-transform: uppercase;
+  color: rgba(251,248,249,.34);
+}
+
+/* =========================================================
+   ПОЖЕЛАНИЯ
+   ========================================================= */
+.wishes {
+  padding: clamp(80px, 12vw, 140px) 24px;
+  background: linear-gradient(180deg, var(--paper) 0%, var(--pink-mist) 100%);
+}
+.wishes__list {
+  max-width: 720px; margin: 0 auto; padding: 0; list-style: none;
+  counter-reset: w;
+}
+.wishes__list li {
+  counter-increment: w;
+  position: relative;
+  padding: 26px 8px 26px 74px;
+  border-bottom: 1px solid rgba(216,31,106,.14);
+  font-family: var(--serif);
+  font-size: clamp(1.16rem, 2.8vw, 1.5rem);
+  line-height: 1.6;
+  color: #1a1a20;
+}
+.wishes__list li:last-child { border-bottom: 0; }
+.wishes__list li::before {
+  content: '0' counter(w);
+  position: absolute; left: 6px; top: 28px;
+  font-family: var(--sans); font-size: .72rem; font-weight: 600;
+  letter-spacing: .12em; color: var(--pink);
+}
+
+/* =========================================================
+   ФИНАЛ
+   ========================================================= */
+.finale {
+  padding: clamp(90px, 14vw, 160px) 24px;
+  text-align: center;
+}
+.finale__heart svg { fill: var(--pink); animation: beat 1.9s ease-in-out infinite; }
+@keyframes beat { 0%,100%{transform:scale(1)} 14%{transform:scale(1.16)} 28%{transform:scale(1)} 42%{transform:scale(1.1)} }
+.finale__line {
+  font-family: var(--serif); font-style: italic;
+  font-size: clamp(1.5rem, 5vw, 2.6rem);
+  margin-top: 26px;
+}
+.finale__sign {
+  font-family: var(--script);
+  font-size: clamp(3rem, 11vw, 5.4rem);
+  color: var(--pink);
+  margin-top: 18px; line-height: 1;
+}
+.finale__date {
+  margin-top: 20px;
+  font-size: .64rem; letter-spacing: .4em; text-transform: uppercase;
+  color: rgba(251,248,249,.34);
+}
+
+/* =========================================================
+   ЛАЙТБОКС
+   ========================================================= */
+.lightbox {
+  position: fixed; inset: 0; z-index: 9500;
+  background: rgba(8,8,10,.94);
+  display: grid; place-items: center;
+  padding: 5vh 24px;
+  animation: fade .35s var(--ease);
+}
+.lightbox[hidden] { display: none; }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+
+.lightbox__frame {
+  margin: 0; background: #fff; padding: 16px 16px 0;
+  max-width: min(620px, 92vw);
+  box-shadow: 0 40px 90px rgba(0,0,0,.6);
+  animation: pop .4s var(--ease);
+}
+@keyframes pop { from { transform: scale(.9) rotate(-1.5deg); opacity: 0 } to { transform: none; opacity: 1 } }
+.lightbox__frame img { display: block; width: 100%; max-height: 74vh; object-fit: contain; background: var(--pink-mist); }
+.lightbox__frame figcaption {
+  font-family: var(--script); font-size: 1.7rem; color: #2a2a30;
+  padding: 14px 6px 20px; text-align: center;
+}
+.lightbox__close {
+  position: absolute; top: 18px; right: 22px;
+  width: 46px; height: 46px; border-radius: 50%;
+  background: transparent; border: 1px solid rgba(251,248,249,.28);
+  color: var(--paper); font-size: 1.7rem; line-height: 1; cursor: pointer;
+  transition: background .3s var(--ease), border-color .3s var(--ease);
+}
+.lightbox__close:hover { background: var(--pink); border-color: var(--pink); }
