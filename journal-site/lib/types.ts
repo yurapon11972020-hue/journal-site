@@ -1,20 +1,11 @@
 export type JournalSource = 'local' | 'yandex-private' | 'yandex-public' | 'yandex-public-cache';
 
-export interface LessonColumn {
-  id: string;
+export interface GradeEntry {
   column: string;
   monthLabel: string | null;
   dayLabel: string | null;
   label: string;
-  date: string | null;
-  dateKey: string | null;
-  datePrecision: 'day' | 'month-day' | 'unknown';
-}
-
-export interface GradeEntry extends LessonColumn {
   value: string;
-  numericValues: number[];
-  attendance: 'valid' | 'invalid' | 'electronic' | null;
 }
 
 export interface AbsenceSummary {
@@ -27,8 +18,6 @@ export interface LessonTopic {
   dateLabel: string;
   topic: string;
   extra: string | null;
-  date?: string | null;
-  dateKey?: string | null;
 }
 
 export interface SubjectSummary {
@@ -39,13 +28,10 @@ export interface SubjectSummary {
   absences: AbsenceSummary;
   grades: GradeEntry[];
   lessonTopics: LessonTopic[];
-  lessons: LessonColumn[];
-  gradeCount: number;
 }
 
 export interface StudentRecord {
   id: number;
-  key: string;
   name: string;
   overallAverage: number | null;
   totalAbsences: AbsenceSummary;
@@ -56,7 +42,6 @@ export interface SubjectMeta {
   sheetName: string;
   subjectName: string;
   teacherName: string | null;
-  lessons: LessonColumn[];
 }
 
 export interface ReportCardRow {
@@ -68,7 +53,6 @@ export interface ReportCardRow {
   absences: AbsenceSummary;
   validAbsenceLabel?: string | null;
   invalidAbsenceLabel?: string | null;
-  origin?: 'source' | 'calculated';
 }
 
 export interface ReportCard {
@@ -78,7 +62,6 @@ export interface ReportCard {
   totalAbsences: AbsenceSummary;
   totalAbsenceCount: number;
   rows: ReportCardRow[];
-  origin?: 'source' | 'calculated';
 }
 
 export interface JournalData {
@@ -91,7 +74,6 @@ export interface JournalData {
   subjects: SubjectMeta[];
   students: StudentRecord[];
   reportCards: ReportCard[];
-  sync?: { stale: boolean; checkedAt: string; errorCode?: string; error?: string; nextRefreshAt?: string };
 }
 
 export interface JournalGroupRef {
@@ -109,8 +91,4 @@ export interface JournalFileResult {
   sourceDetails: string;
   fileName?: string;
   groupNameHint?: string;
-  fetchedAt?: string;
-  sync?: JournalData['sync'];
 }
-
-export type JournalGroupView = Pick<JournalGroupRef, 'id' | 'groupName' | 'fileName' | 'source'>;

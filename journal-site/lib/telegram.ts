@@ -26,20 +26,18 @@ async function tg<T = unknown>(method: string, payload: Record<string, unknown>)
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       cache: 'no-store',
-      signal: AbortSignal.timeout(15000),
-      redirect: 'error',
     });
 
     const data = (await response.json().catch(() => null)) as { ok?: boolean; result?: T; description?: string } | null;
 
     if (!data?.ok) {
-      console.error(`[telegram] ${method} failed`, response.status);
+      console.error(`[telegram] ${method} failed:`, data?.description || response.status);
       return null;
     }
 
     return data.result ?? null;
-  } catch {
-    console.error(`[telegram] ${method} failed`);
+  } catch (error) {
+    console.error(`[telegram] ${method} error:`, error);
     return null;
   }
 }
@@ -78,7 +76,7 @@ export async function setWebhook(url: string): Promise<{ ok: boolean; descriptio
   const payload: Record<string, unknown> = {
     url,
     allowed_updates: ['message', 'callback_query'],
-    drop_pending_updates: false,
+    drop_pending_updates: true,
   };
 
   const secret = getWebhookSecret();
@@ -91,8 +89,6 @@ export async function setWebhook(url: string): Promise<{ ok: boolean; descriptio
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     cache: 'no-store',
-    signal: AbortSignal.timeout(15000),
-    redirect: 'error',
   });
 
   const data = (await response.json().catch(() => ({}))) as { ok?: boolean; description?: string };

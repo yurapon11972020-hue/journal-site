@@ -1,10 +1,4 @@
 import * as XLSX from 'xlsx';
-import { createHash } from 'node:crypto';
-import { journalDate, monthNumber } from '@/lib/journal-dates';
-import { JournalError, logJournalEvent } from '@/lib/journal-errors';
-import { parseMarkValue } from '@/lib/mark-values';
-import type { LessonColumn } from '@/lib/types';
-import { checkWorkbookArchive } from '@/lib/workbook-limits';
 
 import type {
   AbsenceSummary,
@@ -27,7 +21,7 @@ interface RosterInfo {
   students: string[];
 }
 
-interface SheetLessonColumn extends LessonColumn {
+interface SheetLessonColumn {
   index: number;
   column: string;
   monthLabel: string | null;
@@ -78,9 +72,9 @@ function normalizeText(value: unknown): string {
   }
 
   if (value instanceof Date) {
-    const day = String(value.getUTCDate()).padStart(2, '0');
-    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
-    const year = value.getUTCFullYear();
+    const day = String(value.getDate()).padStart(2, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const year = value.getFullYear();
     return `${day}.${month}.${year}`;
   }
 
@@ -142,11 +136,6 @@ function getCellText(sheet: XLSX.WorkSheet, row: number, col: number): string {
 
   if (!cell) {
     return '';
-  }
-
-  if (typeof cell.v === 'number' && typeof cell.z === 'string' && XLSX.SSF.is_date(cell.z)) {
-    const parsed = XLSX.SSF.parse_date_code(cell.v, { date1904: Boolean(sheet['!journalDate1904']) });
-    if (parsed) return `${String(parsed.d).padStart(2, '0')}.${String(parsed.m).padStart(2, '0')}.${parsed.y}`;
   }
 
   if (cell.w) {
@@ -279,6 +268,20 @@ function buildLessonLabel(monthLabel: string | null, dayLabel: string | null, co
   return `Колонка ${columnLetter}`;
 }
 
+function parseNumericGrade(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value >= 1 && value <= 5) {
+      return value;
+    }
+
+    return null;
+  }
+
+  const normalized = normalizeName(value);
+  const match = normalized.match(/^([1-5])([+-])?$/);
+  return match ? Number(match[1]) : null;
+}
+
 function parseNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -291,6 +294,14 @@ function parseNumber(value: unknown): number | null {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isInvalidAbsence(value: unknown): boolean {
+  return normalizeName(value) === 'н';
+}
+
+function isValidAbsence(value: unknown): boolean {
+  return normalizeName(value) === 'н/у';
 }
 
 function collectNumberedRows(sheet: XLSX.WorkSheet): Array<{ row: number; name: string }> {
@@ -396,62 +407,10 @@ function buildRoster(workbook: XLSX.WorkBook): RosterInfo {
     );
   }
 
-  const names = new Map<string, string>();
-  for (const sheetName of workbook.SheetNames) {
-    if (EXCLUDED_SHEETS.has(sheetName)) continue;
-    const sheet = workbook.Sheets[sheetName];
-    if (!detectHeaderRows(sheet)) continue;
-    const seen = new Set<string>();
-    let duplicates = 0;
-    for (const entry of collectNumberedRows(sheet)) {
-      const key = normalizeName(entry.name);
-      // В журнале колледжа студент иногда записан дважды. Раньше это отменяло
-      // разбор всего файла, и группа переставала открываться целиком.
-      // Берём первую строку студента, а о повторе сообщаем в лог без фамилий.
-      if (seen.has(key)) {
-        duplicates += 1;
-        continue;
-      }
-      seen.add(key);
-      names.set(key, entry.name);
-    }
-    if (duplicates) logJournalEvent('duplicate_students', { sheet: sheetName, count: duplicates });
-  }
-  if (!names.size) throw new JournalError('JOURNAL_STRUCTURE_CHANGED');
-  return { groupName: detectGroupName(workbook), students: [...names.values()] };
-}
-
-/** Locate the adjacent month/day header rows before the first student block. */
-function detectHeaderRows(sheet: XLSX.WorkSheet): { monthRow: number; dayRow: number } | null {
-  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-  const lastRow = Math.min(range.e.r + 1, 30);
-  const lastColumn = Math.min(range.e.c + 1, 1024);
-
-  for (let row = 2; row <= lastRow; row += 1) {
-    const marker = normalizeName(getCellText(sheet, row, 1));
-    if (/^(№|номер|n|no\.?)$/.test(marker)) return { monthRow: row - 1, dayRow: row };
-    if (marker === 'число' || marker === 'дата') {
-      if (!isTopicHeaderRow(sheet, row)) return { monthRow: row - 1, dayRow: row };
-    }
-  }
-
-  // В журнале колледжа подписи «Месяц» и «Число» стоят во втором столбце,
-  // а не в первом: там номер группы. Ищем их в начальных столбцах.
-  // Без этого предмет, по которому ещё не было ни одного занятия, выглядел
-  // как лист неизвестной структуры и ронял разбор всего журнала.
-  for (let row = 2; row < lastRow; row += 1) {
-    for (let col = 1; col <= Math.min(lastColumn, 4); col += 1) {
-      if (normalizeName(getCellText(sheet, row, col)) !== 'месяц') continue;
-      const below = normalizeName(getCellText(sheet, row + 1, col));
-      if (below === 'число' || below === 'дата') return { monthRow: row, dayRow: row + 1 };
-    }
-  }
-
-  // Original template may leave A4 blank. Require semantic month/day evidence.
-  for (let col = 3; col <= lastColumn; col += 1) {
-    if (journalDate(getCellText(sheet, 3, col), getCellText(sheet, 4, col)).dateKey) return { monthRow: 3, dayRow: 4 };
-  }
-  return null;
+  return {
+    groupName: detectGroupName(workbook),
+    students: bestRows.map((entry) => entry.name),
+  };
 }
 
 // Заголовки итоговых столбцов. В журнале такой блок может стоять
@@ -465,7 +424,6 @@ function isSummaryHeader(headerText: string): boolean {
 function findSummaryColumns(
   sheet: XLSX.WorkSheet,
   maxColumn: number,
-  headerRows: number[] = [3, 4],
 ): {
   averageCol: number | null;
   validCol: number | null;
@@ -477,7 +435,7 @@ function findSummaryColumns(
   let invalidCol: number | null = null;
   const summaryColumns = new Set<number>();
 
-  for (const headerRow of headerRows) {
+  for (const headerRow of [3, 4]) {
     for (let col = 1; col <= maxColumn; col += 1) {
       const header = normalizeName(getCellText(sheet, headerRow, col));
 
@@ -493,7 +451,7 @@ function findSummaryColumns(
         averageCol = col;
       }
 
-      if (!validCol && header.includes('уваж') && !header.includes('неуваж')) {
+      if (!validCol && header.includes('уваж')) {
         validCol = col;
       }
 
@@ -556,50 +514,31 @@ function buildLessonColumns(
   maxColumn: number,
   summaryColumns: Set<number>,
   rosterRows: number[],
-  header: { monthRow: number; dayRow: number },
-  sheetName: string,
-  yearHint?: number,
 ): SheetLessonColumn[] {
   const columns: SheetLessonColumn[] = [];
   let lastMonthLabel = '';
-  let currentYear = yearHint;
-  let previousMonth: number | null = null;
-  const occurrences = new Map<string, number>();
 
   // Идём по всей ширине листа, а не до первого столбца «Средний».
   // В журнале итоговый блок может повторяться после каждого месяца,
   // и всё, что стояло за первым таким блоком, раньше терялось.
   for (let col = 3; col <= maxColumn; col += 1) {
     if (summaryColumns.has(col)) {
+      lastMonthLabel = '';
       continue;
     }
 
-    const rawMonthLabel = getCellText(sheet, header.monthRow, col);
-    if (rawMonthLabel && (monthNumber(rawMonthLabel) || isFullDate(rawMonthLabel))) {
+    const rawMonthLabel = getCellText(sheet, 3, col);
+    if (rawMonthLabel) {
       lastMonthLabel = rawMonthLabel;
     }
 
     const monthLabel = rawMonthLabel || lastMonthLabel || null;
-    const dayLabel = getCellText(sheet, header.dayRow, col) || null;
+    const dayLabel = getCellText(sheet, 4, col) || null;
     const headerText = normalizeName(`${monthLabel || ''} ${dayLabel || ''}`);
 
     if (isSummaryHeader(headerText)) {
       continue;
     }
-
-    // Unlabelled values and service columns are never silently treated as grades.
-    const unhintedDate = journalDate(monthLabel, dayLabel);
-    const month = unhintedDate.dateKey ? Number(unhintedDate.dateKey.slice(-5, -3)) : monthNumber(monthLabel || '');
-    if (previousMonth === null && currentYear !== undefined && month && month < 9 && !unhintedDate.date) currentYear += 1;
-    if (currentYear !== undefined && previousMonth === 12 && month === 1) currentYear += 1;
-    const normalizedDate = journalDate(monthLabel, dayLabel, currentYear);
-    if (!normalizedDate.dateKey) {
-      const looksDated = /^\d{1,2}$/.test(dayLabel || '') && Boolean(month);
-      if (looksDated || isFullDate(dayLabel || '') || /^\d{4}-\d{2}-\d{2}$/.test(dayLabel || '')) throw new JournalError('JOURNAL_VALIDATION_FAILED');
-      continue;
-    }
-    if (normalizedDate.date) currentYear = Number(normalizedDate.date.slice(0, 4));
-    previousMonth = Number(normalizedDate.dateKey.slice(-5, -3));
 
     const sampleValues = rosterRows
       .map((row) => getCellValue(sheet, row, col))
@@ -620,16 +559,12 @@ function buildLessonColumns(
     }
 
     const columnLetter = XLSX.utils.encode_col(col - 1);
-    const occurrence = (occurrences.get(normalizedDate.dateKey) ?? 0) + 1;
-    occurrences.set(normalizedDate.dateKey, occurrence);
     columns.push({
-      id: `${sheetName}::${normalizedDate.dateKey}::${occurrence}`,
       index: col,
       column: columnLetter,
       monthLabel: monthLabel ? normalizeSpaces(monthLabel) : null,
       dayLabel: dayLabel ? normalizeSpaces(dayLabel) : null,
-      label: (normalizedDate.date ? normalizedDate.date.split('-').reverse().join('.') : normalizedDate.dateKey ? normalizedDate.dateKey.slice(-5).split('-').reverse().join('.') : buildLessonLabel(monthLabel || null, dayLabel || null, columnLetter)) + (occurrence > 1 ? ` · занятие ${occurrence}` : ''),
-      ...normalizedDate,
+      label: buildLessonLabel(monthLabel || null, dayLabel || null, columnLetter),
     });
   }
 
@@ -689,7 +624,6 @@ function parseLessonTopics(sheet: XLSX.WorkSheet): LessonTopic[] {
       dateLabel: dateLabel || `Строка ${row}`,
       topic: topic || '—',
       extra: extraParts.length ? extraParts.join(' • ') : null,
-      ...journalDate(null, dateLabel),
     });
   }
 
@@ -708,8 +642,6 @@ function buildBlankSubject(sheetName: string, subjectName: string, teacherName: 
     },
     grades: [],
     lessonTopics: [],
-    lessons: [],
-    gradeCount: 0,
   };
 }
 
@@ -726,7 +658,6 @@ function parseStudentSubject(
     return {
       ...buildBlankSubject(sheetName, subjectName, teacherName),
       lessonTopics,
-      lessons: lessonColumns.map(({ index: _index, ...lesson }) => { void _index; return lesson; }),
     };
   }
 
@@ -735,38 +666,32 @@ function parseStudentSubject(
   const absences: AbsenceSummary = { valid: 0, invalid: 0 };
 
   for (const lesson of lessonColumns) {
-    // A merged mark belongs only to its origin. Never copy it to adjacent dates/students.
-    const direct = getDirectCell(sheet, row, lesson.index);
-    const rawValue = direct?.v;
-    const stringValue = direct ? normalizeText(direct.w ?? direct.v) : '';
+    const rawValue = getCellValue(sheet, row, lesson.index);
+    const stringValue = getCellText(sheet, row, lesson.index);
 
     if (!stringValue) {
       continue;
     }
 
-    const mark = parseMarkValue(rawValue);
-    if (mark.attendance === 'valid') {
+    if (isValidAbsence(rawValue)) {
       absences.valid += 1;
     }
 
-    if (mark.attendance === 'invalid') {
+    if (isInvalidAbsence(rawValue)) {
       absences.invalid += 1;
     }
 
-    numericGrades.push(...mark.numbers);
+    const numericGrade = parseNumericGrade(rawValue);
+    if (numericGrade !== null) {
+      numericGrades.push(numericGrade);
+    }
 
     grades.push({
-      id: lesson.id,
       column: lesson.column,
       monthLabel: lesson.monthLabel,
       dayLabel: lesson.dayLabel,
       label: lesson.label,
       value: stringValue,
-      numericValues: mark.numbers,
-      attendance: mark.attendance,
-      date: lesson.date,
-      dateKey: lesson.dateKey,
-      datePrecision: lesson.datePrecision,
     });
   }
 
@@ -778,8 +703,6 @@ function parseStudentSubject(
     absences,
     grades,
     lessonTopics,
-    lessons: lessonColumns.map(({ index: _index, ...lesson }) => { void _index; return lesson; }),
-    gradeCount: numericGrades.length,
   };
 }
 
@@ -790,25 +713,14 @@ function buildRowResolver(sheet: XLSX.WorkSheet): (studentName: string, index: n
     const rowsByName = new Map<string, number>();
 
     for (const entry of numberedRows) {
-      const key = normalizeName(entry.name);
-      // Повтор студента: оценки берём из первой его строки, как и список группы.
-      if (rowsByName.has(key)) continue;
-      rowsByName.set(key, entry.row);
+      rowsByName.set(normalizeName(entry.name), entry.row);
     }
 
     return (studentName: string) => rowsByName.get(normalizeName(studentName)) ?? null;
   }
 
-  // If numbers disappeared, use exact names; positional fallback can expose another student's marks.
-  const rowsByName = new Map<string, number>();
-  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-  for (let row = 1; row <= range.e.r + 1; row += 1) {
-    const key = normalizeName(getCellText(sheet, row, 2));
-    if (!key) continue;
-    if (rowsByName.has(key)) continue;
-    rowsByName.set(key, row);
-  }
-  return (studentName: string) => rowsByName.get(normalizeName(studentName)) ?? null;
+  const fallbackStartRow = 5;
+  return (_studentName: string, index: number) => fallbackStartRow + index;
 }
 
 function isReportCardHeaderRow(sheet: XLSX.WorkSheet, row: number): boolean {
@@ -821,14 +733,12 @@ function isReportCardHeaderRow(sheet: XLSX.WorkSheet, row: number): boolean {
 
 function buildFallbackReportCards(students: StudentRecord[]): ReportCard[] {
   return students.map((student) => ({
-    origin: 'calculated',
     studentId: student.id,
     studentName: student.name,
     overallAverage: student.overallAverage,
     totalAbsences: student.totalAbsences,
     totalAbsenceCount: student.totalAbsences.valid + student.totalAbsences.invalid,
     rows: student.subjects.map((subject, index) => ({
-      origin: 'calculated',
       index: index + 1,
       subjectName: subject.subjectName,
       session: null,
@@ -880,7 +790,6 @@ function appendMissingReportSubjects(rows: ReportCardRow[], matchedStudent: Stud
 
     existingSubjects.add(subjectKey);
     completedRows.push({
-      origin: 'calculated',
       index: completedRows.length + 1,
       subjectName: subject.subjectName,
       session: null,
@@ -936,7 +845,6 @@ function parseReportCards(workbook: XLSX.WorkBook, students: StudentRecord[]): R
     const endRow = (blockStarts[index + 1] ?? (range.e.r + 2)) - 1;
     const studentName = getWorkbookCellText(workbook, sheet, startRow, 1) || `Студент ${cards.length + 1}`;
     const matchedStudent = studentByName.get(normalizeName(studentName));
-    if (!matchedStudent) throw new JournalError('JOURNAL_VALIDATION_FAILED');
     const rows: ReportCardRow[] = [];
     let overallAverage = matchedStudent?.overallAverage ?? null;
     let totalAbsences = matchedStudent?.totalAbsences ?? { valid: 0, invalid: 0 };
@@ -975,7 +883,6 @@ function parseReportCards(workbook: XLSX.WorkBook, students: StudentRecord[]): R
       const invalidAbsenceLabel = normalizeReportText(getReportCellText(sheet, row, 6));
 
       rows.push({
-        origin: 'source',
         index: Number.parseInt(rowNumberText, 10),
         subjectName,
         session: sessionLabel,
@@ -1025,7 +932,6 @@ function parseReportCards(workbook: XLSX.WorkBook, students: StudentRecord[]): R
 
     if (normalizedRows.length) {
       cards.push({
-        origin: 'source',
         studentId: matchedStudent?.id ?? cards.length + 1,
         studentName: matchedStudent?.name ?? studentName,
         overallAverage,
@@ -1040,32 +946,19 @@ function parseReportCards(workbook: XLSX.WorkBook, students: StudentRecord[]): R
     return buildFallbackReportCards(students);
   }
 
-  const known = new Set(cards.map((card) => card.studentId));
-  cards.push(...buildFallbackReportCards(students.filter((student) => !known.has(student.id))));
-  if (new Set(cards.map((card) => card.studentId)).size !== cards.length) throw new JournalError('JOURNAL_VALIDATION_FAILED');
   return cards.sort((a, b) => a.studentId - b.studentId);
 }
 
 function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData {
   const workbook = XLSX.read(buffer, {
     type: 'buffer',
-    cellDates: false,
-    cellNF: true,
+    cellDates: true,
     dense: false,
   });
-
-  if (workbook.SheetNames.length > 100) throw new JournalError('JOURNAL_TOO_LARGE');
-  for (const name of workbook.SheetNames) {
-    const sheet = workbook.Sheets[name];
-    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-    if (range.e.r > 10000 || range.e.c > 1024 || (range.e.r + 1) * (range.e.c + 1) > 1000000) throw new JournalError('JOURNAL_TOO_LARGE');
-    sheet['!journalDate1904'] = Boolean(workbook.Workbook?.WBProps?.date1904);
-  }
 
   const roster = buildRoster(workbook);
   const students: StudentRecord[] = roster.students.map((name, index) => ({
     id: index + 1,
-    key: createHash('sha256').update(normalizeName(name)).digest('hex').slice(0, 24),
     name,
     overallAverage: null,
     totalAbsences: {
@@ -1090,12 +983,11 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
 
     const range = XLSX.utils.decode_range(ref);
     const maxColumn = range.e.c + 1;
-    const header = detectHeaderRows(sheet);
-    if (!header) {
-      if (collectNumberedRows(sheet).length) throw new JournalError('JOURNAL_STRUCTURE_CHANGED');
+    const { averageCol, summaryColumns } = findSummaryColumns(sheet, maxColumn);
+
+    if (!averageCol) {
       continue;
     }
-    const { summaryColumns } = findSummaryColumns(sheet, maxColumn, [header.monthRow, header.dayRow]);
 
     const subjectName = detectSubjectName(sheet, sheetName);
     const teacherName = detectTeacherName(sheet);
@@ -1103,20 +995,13 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
     const resolvedRows = roster.students
       .map((studentName, index) => rowResolver(studentName, index))
       .filter((row): row is number => row !== null);
-    const explicitAcademicYear = workbook.SheetNames.flatMap((name) => {
-      const current = workbook.Sheets[name];
-      return [1, 2, 3].flatMap((r) => [1, 2, 3, 4].map((c) => getCellText(current, r, c)));
-    }).join(' ').match(/\b((?:19|20)\d{2})\s*[-/]\s*(?:19|20)\d{2}\b/);
-    const configuredYear = Number(process.env.JOURNAL_ACADEMIC_YEAR_START);
-    const yearHint = explicitAcademicYear ? Number(explicitAcademicYear[1]) : Number.isInteger(configuredYear) && configuredYear >= 1900 && configuredYear <= 2199 ? configuredYear : undefined;
-    const lessonColumns = buildLessonColumns(sheet, maxColumn, summaryColumns, resolvedRows, header, sheetName, yearHint);
+    const lessonColumns = buildLessonColumns(sheet, maxColumn, summaryColumns, resolvedRows);
     const lessonTopics = parseLessonTopics(sheet);
 
     subjectMeta.push({
       sheetName,
       subjectName,
       teacherName,
-      lessons: lessonColumns.map(({ index: _index, ...lesson }) => { void _index; return lesson; }),
     });
 
     students.forEach((student, index) => {
@@ -1129,13 +1014,14 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
   }
 
   for (const student of students) {
-    const marks = student.subjects.flatMap((subject) => subject.grades.flatMap((grade) => grade.numericValues));
-    student.overallAverage = marks.length
-      ? roundTo(marks.reduce((sum, value) => sum + value, 0) / marks.length)
+    const averages = student.subjects
+      .map((subject) => subject.average)
+      .filter((value): value is number => value !== null);
+
+    student.overallAverage = averages.length
+      ? roundTo(averages.reduce((sum, value) => sum + value, 0) / averages.length)
       : null;
   }
-
-  if (!subjectMeta.length) throw new JournalError('JOURNAL_STRUCTURE_CHANGED');
 
   const reportCards = parseReportCards(workbook, students);
 
@@ -1145,8 +1031,7 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
     // Наружу отдаём только вид источника: внутренний путь кэша и публичная
     // ссылка на Яндекс.Диск не должны попадать в ответ /api/journal.
     sourceDetails: fileInfo.source === 'local' ? (fileInfo.fileName ?? 'локальный файл') : 'Яндекс.Диск',
-    updatedAt: fileInfo.fetchedAt ?? new Date().toISOString(),
-    sync: fileInfo.sync,
+    updatedAt: new Date().toISOString(),
     studentCount: students.length,
     subjectCount: subjectMeta.length,
     subjects: subjectMeta,
@@ -1156,20 +1041,5 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
 }
 
 export function parseJournalWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData {
-  const started = Date.now();
-  if (buffer.length > 20 * 1024 * 1024) throw new JournalError('JOURNAL_TOO_LARGE');
-  if (buffer.subarray(0, 2).toString() !== 'PK' && buffer.subarray(0, 8).toString('hex') !== 'd0cf11e0a1b11ae1') {
-    const preview = buffer.subarray(0, 2048).toString('utf8');
-    if (/type\s*=\s*["']?password|sign.?in|вход|авторизац/i.test(preview)) throw new JournalError('JOURNAL_AUTH_REQUIRED', 401);
-    throw new JournalError('JOURNAL_STRUCTURE_CHANGED');
-  }
-  try {
-    checkWorkbookArchive(buffer);
-    const data = parseWorkbook(buffer, fileInfo);
-    logJournalEvent('parse', { durationMs: Date.now() - started, subjects: data.subjectCount, students: data.studentCount });
-    return data;
-  } catch (error) {
-    if (error instanceof JournalError) throw error;
-    throw new JournalError('JOURNAL_PARSE_FAILED');
-  }
+  return parseWorkbook(buffer, fileInfo);
 }

@@ -1,94 +1,71 @@
+/**
+ * Необязательный вход по коду.
+ *
+ * Пока переменная JOURNAL_ACCESS_CODE не задана, сайт работает как раньше —
+ * открыт всем, у кого есть адрес. Если код задан, любая страница journal-сайта
+ * сначала спрашивает его и запоминает в cookie.
+ *
+ * Код проверяется только на сервере. В cookie кладётся не сам код, а его хэш.
+ */
 export const ACCESS_COOKIE_NAME = 'journal-access';
-export const ACCESS_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
-export interface AccessGrant { scope: string; }
-interface ConfiguredGrant extends AccessGrant { code: string; }
+export const ACCESS_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
 
-function grants(): ConfiguredGrant[] {
-  const result: ConfiguredGrant[] = [];
-  const raw = process.env.JOURNAL_GROUP_ACCESS_CODES?.trim();
-  if (raw) {
-    try {
-      const values: unknown = JSON.parse(raw);
-      if (!values || typeof values !== 'object' || Array.isArray(values)) return [];
-      for (const [scope, code] of Object.entries(values)) {
-        if (typeof code !== 'string' || code.trim().length < 8 || !scope || scope === '*') return [];
-        result.push({ scope, code: code.trim() });
-      }
-    } catch { return []; }
-  }
-  const legacy = process.env.JOURNAL_ACCESS_CODE?.trim();
-  if (legacy && legacy.length >= 8) result.push({ scope: '__single_group__', code: legacy });
-  const admin = process.env.JOURNAL_ADMIN_CODE?.trim();
-  if (admin && admin.length >= 16) result.push({ scope: '*', code: admin });
-  return new Set(result.map((grant) => grant.code)).size === result.length ? result : [];
+export function getAccessCode(): string | null {
+  return process.env.JOURNAL_ACCESS_CODE?.trim() || null;
 }
 
-export function getAccessCode(): string | null { return process.env.JOURNAL_ACCESS_CODE?.trim() || null; }
-export function isAccessConfigured(): boolean { return grants().length > 0; }
+export function isAccessCodeEnabled(): boolean {
+  return getAccessCode() !== null;
+}
 
-/**
- * Вход по коду включён только тогда, когда коды заданы.
- *
- * Пока ни один код не настроен, журнал открыт всем, у кого есть адрес —
- * так сайт работал до появления входа. Закрытый журнал без единого
- * рабочего кода означал бы, что внутрь не может попасть никто, включая
- * куратора: войти было бы нечем.
- */
-export function isAccessCodeEnabled(): boolean { return isAccessConfigured(); }
+function normalizeCode(code: string): string {
+  return code.trim();
+}
 
-/** Доступ ко всем группам, когда коды не настроены. */
-const OPEN_GRANT: AccessGrant = { scope: '*' };
+/** Работает и в Node, и в middleware: обе среды дают Web Crypto. */
+export async function buildAccessToken(code: string): Promise<string> {
+  const data = new TextEncoder().encode(`journal-access::${normalizeCode(code)}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
 
-export function safeEquals(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/** Сравнение постоянного времени, чтобы по скорости ответа нельзя было подобрать значение. */
+function safeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
   let diff = 0;
-  for (let index = 0; index < a.length; index += 1) diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  for (let index = 0; index < a.length; index += 1) {
+    diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+
   return diff === 0;
 }
 
-function encode(bytes: Uint8Array): string { return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
-function decode(text: string): string { return atob(text.replace(/-/g, '+').replace(/_/g, '/')); }
-async function signature(payload: string, code: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', encoder.encode((process.env.JOURNAL_SESSION_SECRET || 'journal-v2') + '::' + code), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  return encode(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(payload))));
+export async function isValidAccessToken(token: string | undefined): Promise<boolean> {
+  const code = getAccessCode();
+
+  if (!code) {
+    return true;
+  }
+
+  if (!token) {
+    return false;
+  }
+
+  return safeEquals(token, await buildAccessToken(code));
 }
 
 export async function isValidAccessCode(candidate: string): Promise<boolean> {
-  const value = candidate.trim();
-  if (!value || value.length > 256) return false;
-  const checks = await Promise.all(grants().map(async (grant) => safeEquals(await signature('login', grant.code), await signature('login', value))));
-  return checks.some(Boolean);
-}
+  const code = getAccessCode();
 
-export async function buildAccessToken(code: string): Promise<string> {
-  const grant = grants().find((entry) => safeEquals(entry.code, code.trim()));
-  if (!grant) throw new Error('Invalid access code');
-  const payload = encode(new TextEncoder().encode(JSON.stringify({ scope: grant.scope, expires: Date.now() + ACCESS_COOKIE_MAX_AGE_SECONDS * 1000, nonce: crypto.randomUUID() })));
-  return payload + '.' + await signature(payload, grant.code);
-}
+  if (!code) {
+    return true;
+  }
 
-export async function getAccessGrant(token?: string): Promise<AccessGrant | null> {
-  if (!isAccessConfigured()) return OPEN_GRANT;
-  if (!token || token.length > 2048) return null;
-  try {
-    const [payload, sig, extra] = token.split('.');
-    if (extra || !payload || !sig) return null;
-    const parsed = JSON.parse(new TextDecoder().decode(Uint8Array.from(decode(payload), (c) => c.charCodeAt(0)))) as { scope?: string; expires?: number };
-    if (!parsed.expires || parsed.expires <= Date.now() || parsed.expires > Date.now() + ACCESS_COOKIE_MAX_AGE_SECONDS * 1000 + 60000) return null;
-    const grant = grants().find((entry) => entry.scope === parsed.scope);
-    if (!grant || !safeEquals(sig, await signature(payload, grant.code))) return null;
-    return { scope: grant.scope };
-  } catch { return null; }
-}
-
-export async function isValidAccessToken(token?: string): Promise<boolean> { return (await getAccessGrant(token)) !== null; }
-
-export function safeNextPath(value: unknown): string {
-  if (typeof value !== 'string' || !value.startsWith('/') || /[\\\u0000-\u0020]/.test(value)) return '/';
-  try { const url = new URL(value, 'https://journal.invalid'); return url.origin === 'https://journal.invalid' ? url.pathname + url.search : '/'; } catch { return '/'; }
-}
-
-export function tokenFromRequest(request: Request): string | undefined {
-  return request.headers.get('cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(ACCESS_COOKIE_NAME + '='))?.slice(ACCESS_COOKIE_NAME.length + 1);
+  return safeEquals(await buildAccessToken(candidate), await buildAccessToken(code));
 }

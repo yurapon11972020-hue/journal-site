@@ -44,10 +44,9 @@ export function buildJournalWorkbook(options: FixtureOptions = {}): Buffer {
     rows[3] = ['№', '', ...lessonDays, '', '', ''];
 
     students.forEach((student, studentIndex) => {
-      const inputValues =
+      const values =
         options.marks?.[studentIndex] ??
         lessonDays.map((_, dayIndex) => ['5', '4', '3', 'н', 'н/у', ''][(studentIndex + dayIndex + subjectIndex) % 6]);
-      const values = lessonDays.map((_, index) => inputValues[index] ?? '');
 
       const numeric = values.map(Number).filter((value) => Number.isFinite(value) && value > 0);
       const average = numeric.length ? Math.round((numeric.reduce((a, b) => a + b, 0) / numeric.length) * 100) / 100 : '';
@@ -61,7 +60,7 @@ export function buildJournalWorkbook(options: FixtureOptions = {}): Buffer {
       const topicsStart = 4 + students.length + 2;
       rows[topicsStart] = ['Дата', 'Тема занятия', 'Домашнее задание'];
       lessonDays.forEach((day, index) => {
-        rows[topicsStart + 1 + index] = [`${day.padStart(2, '0')}.${index < 4 ? '09' : '10'}`, `${subject.name}: тема ${index + 1}`, `Задание ${index + 1}`];
+        rows[topicsStart + 1 + index] = [`0${index + 1}.09`, `${subject.name}: тема ${index + 1}`, `Задание ${index + 1}`];
       });
     }
 

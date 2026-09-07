@@ -3,13 +3,11 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
-import type { JournalGroupView } from '@/lib/types';
+import type { JournalGroupRef } from '@/lib/types';
 import { useTheme } from '@/lib/use-theme';
 
 interface GroupsDashboardProps {
-  groups: JournalGroupView[];
-  /** Кнопка выхода нужна только тогда, когда вход по коду настроен. */
-  showLogout?: boolean;
+  groups: JournalGroupRef[];
 }
 
 // Начиная с этого количества групп показываем поиск по списку.
@@ -32,7 +30,7 @@ function groupsWord(count: number): string {
   return 'групп';
 }
 
-export default function GroupsDashboard({ groups, showLogout = false }: GroupsDashboardProps) {
+export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
   const { theme, toggleTheme } = useTheme();
   const [query, setQuery] = useState('');
 
@@ -65,13 +63,6 @@ export default function GroupsDashboard({ groups, showLogout = false }: GroupsDa
             >
               ✈️ Бот
             </a>
-            {showLogout ? (
-              <form method="post" action="/api/logout">
-                <button className="hero__btn" type="submit">
-                  Выйти
-                </button>
-              </form>
-            ) : null}
             <button
               type="button"
               className="hero__btn"
@@ -115,12 +106,15 @@ export default function GroupsDashboard({ groups, showLogout = false }: GroupsDa
               title={group.fileName}
             >
               <span className="group-card__name">{group.groupName}</span>
+              {group.fileName && group.fileName !== group.groupName ? (
+                <span className="group-card__meta">{group.fileName}</span>
+              ) : null}
             </Link>
           ))}
         </section>
       ) : (
         <section className="groups-empty">
-          {groups.length ? 'Ничего не нашлось. Проверь написание.' : 'Для этого кода пока нет доступных групп. Обратитесь к куратору.'}
+          {groups.length ? 'Ничего не нашлось. Проверь написание.' : 'Список групп пуст — проверь ссылки на Яндекс.Диск.'}
         </section>
       )}
     </main>

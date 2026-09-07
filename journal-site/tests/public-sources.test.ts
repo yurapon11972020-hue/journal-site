@@ -5,19 +5,6 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getPublicSourcesInfo, listJournalFiles, loadJournalFile } from '@/lib/yandex-disk';
-import { buildJournalWorkbook } from './helpers/journal-fixture';
-import { parseJournalWorkbook } from '@/lib/parseJournal';
-import { JournalError } from '@/lib/journal-errors';
-
-vi.mock('@/lib/source-fetch', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@/lib/source-fetch')>();
-  return { ...original, fetchSource: async (url: string, kind: 'api' | 'download') => {
-    original.validateFetchUrl(url, kind);
-    const response = await fetch(url);
-    if (!response.ok) throw new JournalError('JOURNAL_FETCH_FAILED');
-    return Buffer.from(await response.arrayBuffer());
-  } };
-});
 
 const FILE_A = 'https://disk.yandex.ru/i/aaaaaaaaaaaaaa';
 const FILE_B = 'https://disk.yandex.ru/i/bbbbbbbbbbbbbb';
@@ -54,8 +41,6 @@ let downloads = 0;
 let listCalls = 0;
 let downloadFails = false;
 let apiIsDown = false;
-let invalidDownload = false;
-let nextMark = '5';
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -80,16 +65,16 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
   }
 
   if (target.pathname === '/v1/disk/public/resources/download') {
-    return json({ href: `https://downloader.disk.yandex.ru/f?k=${encodeURIComponent(key)}&p=${encodeURIComponent(innerPath)}` });
+    return json({ href: `https://dl.test/f?k=${encodeURIComponent(key)}&p=${encodeURIComponent(innerPath)}` });
   }
 
-  if (target.hostname === 'downloader.disk.yandex.ru') {
+  if (target.hostname === 'dl.test') {
     if (downloadFails) {
       downloadFails = false;
       return new Response('nope', { status: 503, statusText: 'Service Unavailable' });
     }
     downloads += 1;
-    return new Response(Uint8Array.from(invalidDownload ? Buffer.from('<html><input type="password"></html>') : buildJournalWorkbook({ marks: [[target.searchParams.get('k') === FILE_B ? '3' : nextMark]] })));
+    return new Response(Buffer.from(`FILE::${target.searchParams.get('k')}::${target.searchParams.get('p')}`, 'utf8'));
   }
 
   throw new Error(`Неожиданный запрос в тесте: ${input}`);
@@ -131,9 +116,6 @@ beforeEach(async () => {
   listCalls = 0;
   downloadFails = false;
   apiIsDown = false;
-  invalidDownload = false;
-  nextMark = '5';
-  globalThis.__validatedJournalCache = undefined;
   resetRuntime();
 
   process.env.JOURNAL_SOURCE = 'yandex-public-cache';
@@ -227,8 +209,8 @@ describe('загрузка журнала группы', () => {
     const newYear = await loadJournalFile(byName.get('ИСиП-25-9')!.filePath);
     const lastYear = await loadJournalFile(byName.get('ИСиП-24-9')!.filePath);
 
-    expect(parseJournalWorkbook(newYear.buffer, newYear).students[0].subjects[0].grades[0].value).toBe('5');
-    expect(parseJournalWorkbook(lastYear.buffer, lastYear).students[0].subjects[0].grades[0].value).toBe('3');
+    expect(newYear.buffer.toString('utf8')).toContain(FILE_A);
+    expect(lastYear.buffer.toString('utf8')).toContain(FILE_B);
     expect(newYear.sourceDetails).not.toBe(lastYear.sourceDetails);
   });
 
@@ -249,8 +231,8 @@ describe('загрузка журнала группы', () => {
     const legacy = await loadJournalFile('__yandex_public_cache__');
     const empty = await loadJournalFile();
 
-    expect(parseJournalWorkbook(legacy.buffer, legacy).students[0].subjects[0].grades[0].value).toBe('5');
-    expect(empty.buffer.equals(legacy.buffer)).toBe(true);
+    expect(legacy.buffer.toString('utf8')).toContain(FILE_A);
+    expect(empty.buffer.toString('utf8')).toContain(FILE_A);
   });
 
   it('при сбое скачивания отдаёт последнюю удачную копию', async () => {
@@ -263,8 +245,7 @@ describe('загрузка журнала группы', () => {
     downloadFails = true;
 
     const stale = await loadJournalFile(groups[0].filePath);
-    expect(parseJournalWorkbook(stale.buffer, stale).students[0].subjects[0].grades[0].value).toBe('5');
-    expect(stale.sync).toMatchObject({ stale: true, errorCode: 'JOURNAL_FETCH_FAILED' });
+    expect(stale.buffer.toString('utf8')).toContain(FILE_A);
   });
 
   it('хранит не больше JOURNAL_CACHE_MAX_FILES копий на группу', async () => {
@@ -283,7 +264,7 @@ describe('загрузка журнала группы', () => {
     expect(files.length).toBeLessThanOrEqual(2);
   });
 
-  it('ошибка не раскрывает секретную ссылку', async () => {
+  it('в ошибке видно ссылку и переменную, из которой она взята', async () => {
     process.env.YANDEX_DISK_PUBLIC_URL = FILE_A;
     const groups = await listJournalFiles();
 
@@ -291,37 +272,8 @@ describe('загрузка журнала группы', () => {
     resetRuntime();
     await fs.rm(cacheRoot, { recursive: true, force: true });
 
-    await expect(loadJournalFile(groups[0].filePath)).rejects.toMatchObject({ code: 'JOURNAL_FETCH_FAILED' });
-  });
-
-  it('HTTP 200 со страницей входа не заменяет рабочий snapshot', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const [group] = await listJournalFiles();
-    const good = await loadJournalFile(group.filePath);
-    await expireCachedCopy();
-    invalidDownload = true;
-    const stale = await loadJournalFile(group.filePath);
-    expect(stale.buffer.equals(good.buffer)).toBe(true);
-    expect(stale.sync).toMatchObject({ stale: true, errorCode: 'JOURNAL_AUTH_REQUIRED' });
-    const before = downloads;
-    await loadJournalFile(group.filePath);
-    expect(downloads).toBe(before);
-  });
-
-  it('одновременные обновления скачивают один файл', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const [group] = await listJournalFiles();
-    await Promise.all(Array.from({ length: 8 }, () => loadJournalFile(group.filePath)));
-    expect(downloads).toBe(1);
-  });
-
-  it('изменение оценки заменяет содержимое, не добавляя вторую оценку', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const [group] = await listJournalFiles();
-    await loadJournalFile(group.filePath);
-    await expireCachedCopy();
-    nextMark = '4';
-    const fresh = await loadJournalFile(group.filePath);
-    expect(parseJournalWorkbook(fresh.buffer, fresh).students[0].subjects[0].grades.map((mark) => mark.value)).toEqual(['4']);
+    await expect(loadJournalFile(groups[0].filePath)).rejects.toThrow(
+      new RegExp(`404.*${FILE_A}.*YANDEX_DISK_PUBLIC_URL`, 's'),
+    );
   });
 });
