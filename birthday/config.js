@@ -27,19 +27,27 @@ const CONFIG = {
                Пока null — рисуется пустая рамка.
      caption — подпись от руки под фото. Пустая — подписи нет.
      tilt    — наклон рамки в градусах.
-     fit     — 'contain', если кадр нельзя обрезать (мемы, подписи по краям).
-               По умолчанию кадр обрезается по центру до квадрата.
+     fit     — 'contain' для мемов: кадр показывается целиком и сразу
+               в цвете. По умолчанию снимок обрезается по центру до
+               квадрата и обесцвечивается до наведения.
      -------------------------------------------------------------- */
   photos: [
-    { src: null, caption: '', tilt: -8 },
-    { src: null, caption: '', tilt:  6 },
-    { src: null, caption: '', tilt: -3 },
-    { src: null, caption: '', tilt:  5 },
-    { src: null, caption: '', tilt: -6 },
-    { src: null, caption: '', tilt:  4 },
-    { src: null, caption: '', tilt: -5 },
-    { src: null, caption: '', tilt:  7 },
-    { src: null, caption: '', tilt: -4 },
+    /* 1-3 — первый экран */
+    { src: 'photos/1.jpg', caption: '', tilt: -8 },
+    { src: 'photos/2.jpg', caption: '', tilt:  6 },
+    { src: 'photos/3.jpg', caption: '', tilt: -3 },
+
+    /* 4-5 — рядом с письмом */
+    { src: 'photos/4.jpg', caption: '', tilt:  5 },
+    { src: 'photos/5.jpg', caption: '', tilt: -6 },
+
+    /* 6-7 — рядом с пожеланиями */
+    { src: 'photos/6.jpg', caption: '', tilt:  4 },
+    { src: 'photos/7.jpg', caption: '', tilt: -5 },
+
+    /* 8-9 — в финале, мемы: показываем целиком и в цвете */
+    { src: 'photos/8.jpg', caption: '', tilt:  7, fit: 'contain' },
+    { src: 'photos/9.jpg', caption: '', tilt: -4, fit: 'contain' },
   ],
 
   /* Пожелания — коротко. Можно убрать лишние или дописать свои */

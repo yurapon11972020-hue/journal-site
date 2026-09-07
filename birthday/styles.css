@@ -284,9 +284,9 @@ section, header, footer { position: relative; z-index: 2; }
 .polaroid:hover .polaroid__frame { filter: grayscale(0) contrast(1); }
 .polaroid__frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-/* fit: 'contain' в config.js — кадр показывается целиком, ничего не обрезается.
-   Нужно мемам и картинкам с подписями по краям. */
-.polaroid__frame--contain { background: #0d0d0f; }
+/* fit: 'contain' в config.js — кадр целиком и сразу в цвете.
+   Нужно мемам: подписи по краям не срезаются, шутка читается без наведения. */
+.polaroid__frame--contain { background: #0d0d0f; filter: none; }
 .polaroid__frame--contain img { object-fit: contain; }
 
 .polaroid--empty { cursor: default; }
