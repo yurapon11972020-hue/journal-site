@@ -1,18 +1,30 @@
 import { NextResponse } from 'next/server';
-
-import { getJournalData, getJournalDataByGroupId } from '@/lib/journal';
-
+import { getJournalDataByPath, getJournalGroups, findJournalGroupById } from '@/lib/journal';
+import { getAccessGrant, tokenFromRequest } from '@/lib/access';
+import { allowedGroups } from '@/lib/group-access';
+import { JournalError, publicJournalError } from '@/lib/journal-errors';
+import { isSameOrigin, withinRateLimit } from '@/lib/rate-limit';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+const headers = { 'Cache-Control': 'private, no-store' };
 
-export async function GET(request: Request) {
+async function respond(request: Request, force: boolean) {
   try {
-    // /api/journal — первая группа, /api/journal?group=<id> — конкретная группа.
-    const groupId = new URL(request.url).searchParams.get('group')?.trim();
-    const data = groupId ? await getJournalDataByGroupId(groupId) : await getJournalData();
-    return NextResponse.json(data);
+    const grant = await getAccessGrant(tokenFromRequest(request));
+    if (!grant) throw new JournalError('JOURNAL_AUTH_REQUIRED', 401);
+    const groups = allowedGroups(await getJournalGroups(), grant);
+    const id = new URL(request.url).searchParams.get('group')?.trim();
+    const group = id ? await findJournalGroupById(id) : groups[0];
+    if (!group || !groups.some((entry) => entry.id === group.id)) throw new JournalError('JOURNAL_NOT_FOUND', 404);
+    if (force && !withinRateLimit('refresh:' + group.id, 4, 60000)) return NextResponse.json({ error: 'Подождите минуту перед следующим обновлением.' }, { status: 429, headers: { ...headers, 'Retry-After': '60' } });
+    return NextResponse.json(await getJournalDataByPath(group.filePath, { force }), { headers });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const safe = publicJournalError(error);
+    return NextResponse.json({ code: safe.code, error: safe.error }, { status: safe.status, headers });
   }
+}
+export async function GET(request: Request) { return respond(request, false); }
+export async function POST(request: Request) {
+  if (!isSameOrigin(request)) return NextResponse.json({ error: 'Недопустимый источник запроса.' }, { status: 403, headers });
+  return respond(request, true);
 }

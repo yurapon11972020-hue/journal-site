@@ -17,21 +17,28 @@ import {
   type BotScreen,
 } from '@/lib/telegram-views';
 import type { JournalData, JournalGroupRef } from '@/lib/types';
+import { isAccessConfigured, safeEquals } from '@/lib/access';
+import { allowedGroups } from '@/lib/group-access';
+import { publicJournalError, logJournalEvent } from '@/lib/journal-errors';
+import { withinRateLimit } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 interface TelegramUpdate {
+  update_id?: number;
   message?: {
-    chat: { id: number };
+    chat: { id: number; type?: string };
+    from?: { id: number };
     text?: string;
   };
   callback_query?: {
     id: string;
     data?: string;
+    from?: { id: number };
     message?: {
-      chat: { id: number };
+      chat: { id: number; type?: string };
       message_id: number;
     };
   };
@@ -46,9 +53,9 @@ async function loadGroupData(groups: JournalGroupRef[], gi: number): Promise<{ d
   return { data, gi: groups[gi] ? gi : 0, group };
 }
 
-async function buildScreen(action: string): Promise<BotScreen> {
+async function buildScreen(action: string, scope: string): Promise<BotScreen> {
   try {
-    const groups = await getJournalGroups();
+    const groups = allowedGroups(await getJournalGroups(), { scope });
 
     if (action === 'grp' || action === 'start') {
       // Если группа всего одна — сразу открываем её журнал без лишнего экрана.
@@ -111,16 +118,24 @@ async function buildScreen(action: string): Promise<BotScreen> {
       }
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    const message = publicJournalError(error).error;
     return errorScreen(message);
   }
 }
 
 export async function POST(request: Request) {
+  // Бот повторяет модель доступа сайта. Пока коды групп не настроены,
+  // журнал открыт всем, и бот отвечает как раньше — без секрета webhook
+  // и без белого списка чатов: закрывать бота, когда сам сайт открыт,
+  // ничего не защищает, а работать он при этом перестаёт.
+  const journalIsOpen = !isAccessConfigured();
   const expectedSecret = getWebhookSecret();
+
+  if (!expectedSecret && !journalIsOpen) return NextResponse.json({ ok: false }, { status: 503 });
+
   if (expectedSecret) {
     const receivedSecret = request.headers.get('x-telegram-bot-api-secret-token');
-    if (receivedSecret !== expectedSecret) {
+    if (!receivedSecret || !safeEquals(receivedSecret, expectedSecret)) {
       return NextResponse.json({ ok: false }, { status: 401 });
     }
   }
@@ -131,6 +146,21 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
+
+  if (!update || typeof update !== 'object') return NextResponse.json({ ok: false }, { status: 400 });
+  const chat = update.message?.chat ?? update.callback_query?.message?.chat;
+  const from = update.message?.from ?? update.callback_query?.from;
+  if (!chat || chat.type !== 'private' || from?.id !== chat.id || !Number.isSafeInteger(chat.id)) return NextResponse.json({ ok: true });
+  let configuredScope: unknown;
+  try { configuredScope = JSON.parse(process.env.TELEGRAM_GROUP_ACCESS || '{}')[String(chat.id)]; } catch { return NextResponse.json({ ok: false }, { status: 503 }); }
+
+  const hasChatGrant = typeof configuredScope === 'string' && Boolean(configuredScope) && configuredScope !== '*';
+  // Чат не в списке: при открытом журнале показываем все группы, как раньше.
+  if (!hasChatGrant && !journalIsOpen) return NextResponse.json({ ok: true });
+  const scope = hasChatGrant ? (configuredScope as string) : '*';
+
+  if (!withinRateLimit(`telegram:${chat.id}`, 20, 60000)) return NextResponse.json({ ok: true });
+  if (Number.isSafeInteger(update.update_id) && !withinRateLimit(`update:${update.update_id}`, 1, 300000)) return NextResponse.json({ ok: true });
 
   try {
     if (update.callback_query) {
@@ -143,7 +173,7 @@ export async function POST(request: Request) {
       await answerCallback(query.id);
 
       if (chatId && messageId) {
-        const screen = await buildScreen(action);
+        const screen = await buildScreen(action, scope);
         const edited = await editMessage(chatId, messageId, screen.text, screen.buttons);
         if (!edited) {
           await sendMessage(chatId, screen.text, screen.buttons);
@@ -151,11 +181,11 @@ export async function POST(request: Request) {
       }
     } else if (update.message?.text) {
       const chatId = update.message.chat.id;
-      const screen = await buildScreen('start');
+      const screen = await buildScreen('start', scope);
       await sendMessage(chatId, screen.text, screen.buttons);
     }
   } catch (error) {
-    console.error('[telegram] Ошибка обработки апдейта:', error);
+    logJournalEvent('telegram_failed', { code: publicJournalError(error).code });
   }
 
   // Всегда отвечаем 200, иначе Telegram будет бесконечно повторять апдейт.
@@ -165,6 +195,6 @@ export async function POST(request: Request) {
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    hint: 'Это webhook телеграм-бота. Для подключения открой /api/telegram/setup',
+    hint: 'Webhook Telegram.',
   });
 }

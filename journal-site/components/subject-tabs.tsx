@@ -71,6 +71,7 @@ export default function SubjectTabs({ items, activeId, onSelect, label = 'Раз
       if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
         return;
       }
+      if ((event.deltaY < 0 && track.scrollLeft <= 0) || (event.deltaY > 0 && track.scrollLeft >= track.scrollWidth - track.clientWidth - 1)) return;
 
       track.scrollLeft += event.deltaY;
       event.preventDefault();

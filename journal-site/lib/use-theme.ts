@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { THEME_STORAGE_KEY } from '@/lib/theme-config';
 
 export type Theme = 'dark' | 'light';
-
-export const THEME_STORAGE_KEY = 'journal-theme';
 
 /**
  * Тема живёт в атрибуте data-theme на <html>: его выставляет маленький скрипт
@@ -58,4 +57,3 @@ export function useTheme(): { theme: Theme; toggleTheme: () => void } {
  * Скрипт выставляет тему до первой отрисовки страницы.
  * Держим его строкой, чтобы вставить в <head> одним тегом.
  */
-export const THEME_BOOTSTRAP_SCRIPT = `try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');document.documentElement.dataset.theme=(t==='light'||t==='dark')?t:'dark'}catch(e){document.documentElement.dataset.theme='dark'}`;

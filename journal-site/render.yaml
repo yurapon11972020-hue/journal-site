@@ -3,23 +3,33 @@ services:
     name: journal-site
     runtime: node
     plan: free
-    buildCommand: npm install --package-lock=false --registry=https://registry.npmjs.org/ --no-audit --no-fund && npm run build
+    buildCommand: npm ci --no-audit --no-fund && npm run build
     startCommand: npm start
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: 20.11.1
+        value: 24.16.0
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
       - key: JOURNAL_SOURCE
         value: yandex-public-cache
       # Список групп: одна ссылка = одна группа, ссылка на папку = все Excel внутри.
-      # Несколько групп пишутся через запятую или с новой строки,
-      # можно задать своё название: "ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА".
       - key: YANDEX_DISK_PUBLIC_URLS
         value: "https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA"
+      # Коды доступа по группам. Пока не заданы, журнал открыт всем, у кого есть адрес.
+      - key: JOURNAL_GROUP_ACCESS_CODES
+        sync: false
+      # Токен бота задаётся в панели Render и в репозиторий не попадает.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: JOURNAL_SESSION_SECRET
+        sync: false
+      - key: PUBLIC_SITE_URL
+        sync: false
       - key: JOURNAL_CACHE_INTERVAL_MINUTES
-        value: "5"
+        value: "30"
       - key: JOURNAL_CACHE_MAX_FILES
         value: "2"
       - key: JOURNAL_CACHE_DIR
@@ -30,5 +40,3 @@ services:
         value: "24"
       - key: JOURNAL_TIMEZONE_OFFSET_HOURS
         value: "5"
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false

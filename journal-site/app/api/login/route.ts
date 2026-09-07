@@ -4,35 +4,31 @@ import {
   ACCESS_COOKIE_MAX_AGE_SECONDS,
   ACCESS_COOKIE_NAME,
   buildAccessToken,
-  getAccessCode,
+  isAccessConfigured,
   isValidAccessCode,
+  safeNextPath,
 } from '@/lib/access';
+import { isSameOrigin, withinRateLimit, requestOrigin } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function redirectTo(request: Request, target: string): NextResponse {
-  return NextResponse.redirect(new URL(target, request.url), { status: 303 });
+  return NextResponse.redirect(new URL(target, requestOrigin(request)), { status: 303 });
 }
 
 /** Разрешаем возврат только на свои же страницы, чтобы форму нельзя было увести на чужой сайт. */
-function safeNextPath(value: FormDataEntryValue | null): string {
-  const raw = typeof value === 'string' ? value.trim() : '';
-  return raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
-}
-
 export async function POST(request: Request) {
-  const code = getAccessCode();
-  if (!code) {
-    return redirectTo(request, '/');
-  }
+  if (!isSameOrigin(request)) return NextResponse.json({ error: 'Недопустимый источник запроса.' }, { status: 403 });
+  if (!isAccessConfigured()) return NextResponse.json({ error: 'Доступ ещё не настроен.' }, { status: 503 });
+  if (!withinRateLimit('login-global', 30, 60000)) return NextResponse.json({ error: 'Слишком много попыток. Подождите минуту.' }, { status: 429, headers: { 'Retry-After': '60' } });
 
   const form = await request.formData().catch(() => null);
   const candidate = typeof form?.get('code') === 'string' ? String(form.get('code')) : '';
   const nextPath = safeNextPath(form?.get('next') ?? null);
 
   if (!(await isValidAccessCode(candidate))) {
-    const retry = new URL('/login', request.url);
+    const retry = new URL('/login', requestOrigin(request));
     retry.searchParams.set('error', '1');
     if (nextPath !== '/') {
       retry.searchParams.set('next', nextPath);
@@ -41,6 +37,7 @@ export async function POST(request: Request) {
   }
 
   const response = redirectTo(request, nextPath);
+  response.headers.set('Cache-Control', 'private, no-store');
   response.cookies.set({
     name: ACCESS_COOKIE_NAME,
     value: await buildAccessToken(candidate),

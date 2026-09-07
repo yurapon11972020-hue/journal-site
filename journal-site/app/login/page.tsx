@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-import { isAccessCodeEnabled } from '@/lib/access';
+import { isAccessConfigured, safeNextPath } from '@/lib/access';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +13,13 @@ export const metadata = {
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  if (!isAccessCodeEnabled()) {
+  // Коды не настроены — журнал открыт, и форма входа не нужна.
+  if (!isAccessConfigured()) {
     redirect('/');
   }
 
   const { next, error } = await searchParams;
-  const nextPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+  const nextPath = safeNextPath(next);
 
   return (
     <main className="login-page">
@@ -39,6 +40,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           autoComplete="current-password"
           autoFocus
           required
+          maxLength={256}
         />
 
         {error ? (
