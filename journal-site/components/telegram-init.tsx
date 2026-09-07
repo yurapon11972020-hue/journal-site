@@ -9,6 +9,7 @@ type TgWebApp = {
   ready: () => void;
   expand: () => void;
   onEvent: (event: string, callback: () => void) => void;
+  offEvent?: (event: string, callback: () => void) => void;
 };
 
 function getTelegram(): TgWebApp | undefined {
@@ -52,6 +53,8 @@ html[data-tg-webapp] .lesson-topic-card {
 
 export default function TelegramInit() {
   useEffect(() => {
+    if (!getTelegram() && !window.location.hash.includes('tgWebAppData')) return;
+    let cleanup: (() => void) | undefined;
     if (!document.getElementById('tg-webapp-style')) {
       const style = document.createElement('style');
       style.id = 'tg-webapp-style';
@@ -85,6 +88,7 @@ export default function TelegramInit() {
 
       try {
         tg.onEvent('themeChanged', applyScheme);
+        cleanup = () => tg.offEvent?.('themeChanged', applyScheme);
       } catch {
         // ignore
       }
@@ -92,14 +96,18 @@ export default function TelegramInit() {
 
     if (getTelegram()) {
       apply();
-      return;
+      return () => cleanup?.();
     }
 
+    const existing = document.getElementById('telegram-sdk');
+    if (existing) { existing.addEventListener('load', apply); return () => { existing.removeEventListener('load', apply); cleanup?.(); }; }
     const script = document.createElement('script');
+    script.id = 'telegram-sdk';
     script.src = 'https://telegram.org/js/telegram-web-app.js';
     script.async = true;
     script.onload = apply;
     document.head.appendChild(script);
+    return () => { script.onload = null; cleanup?.(); };
   }, []);
 
   return null;

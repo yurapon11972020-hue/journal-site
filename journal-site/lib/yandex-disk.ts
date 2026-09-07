@@ -4,6 +4,9 @@ import path from 'node:path';
 
 import { basenameFromFilePath, filenameToGroupName, groupPathToPublicId } from '@/lib/group-files';
 import type { JournalFileResult, JournalGroupRef, JournalSource } from '@/lib/types';
+import { fetchSource, validatePublicUrl, MAX_FILE_BYTES } from '@/lib/source-fetch';
+import { readValidatedJournal } from '@/lib/validated-journal';
+import { JournalError, publicJournalError, logJournalEvent } from '@/lib/journal-errors';
 
 const PRIVATE_DOWNLOAD_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/resources/download';
 const PRIVATE_RESOURCE_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/resources';
@@ -49,6 +52,7 @@ interface PublicGroupSource {
 }
 
 interface CachedJournalVersion {
+  buffer?: Buffer;
   fileName: string;
   filePath: string;
   displayName: string;
@@ -78,6 +82,7 @@ interface PublicJournalCacheRuntime {
   refreshPromises?: Map<string, Promise<CachedJournalVersion>>;
   groupsPromise?: Promise<PublicGroupSource[]>;
   interval?: NodeJS.Timeout;
+  failures?: Map<string, { at: number; code: string; error: string }>;
 }
 
 declare global {
@@ -88,6 +93,7 @@ function getCacheRuntime(): PublicJournalCacheRuntime {
   globalThis.__journalPublicCacheRuntime ??= {};
   const runtime = globalThis.__journalPublicCacheRuntime;
   runtime.refreshPromises ??= new Map<string, Promise<CachedJournalVersion>>();
+  runtime.failures ??= new Map();
   return runtime;
 }
 
@@ -107,8 +113,9 @@ function isSpreadsheetFile(fileName: string): boolean {
 
 function buildGroupRef(source: JournalSource, filePath: string, fileName?: string, groupName?: string): JournalGroupRef {
   const resolvedFileName = fileName || basenameFromFilePath(filePath);
+  const publicGroup = decodePublicGroupPath(filePath);
   return {
-    id: groupPathToPublicId(filePath),
+    id: groupPathToPublicId(publicGroup ? `public::${publicGroup.publicKey}::${publicGroup.publicPath || ''}` : filePath),
     groupName: groupName?.trim() || filenameToGroupName(resolvedFileName),
     fileName: resolvedFileName,
     filePath,
@@ -164,7 +171,7 @@ function isWithinRefreshWindow(date = new Date()): boolean {
 
 function getPublicCacheDir(): string {
   const configuredDir = process.env.JOURNAL_CACHE_DIR?.trim() || './.journal-cache';
-  return path.isAbsolute(configuredDir) ? configuredDir : path.join(process.cwd(), configuredDir);
+  return path.isAbsolute(configuredDir) ? configuredDir : path.join(/* turbopackIgnore: true */ process.cwd(), configuredDir);
 }
 
 function getPublicPath(): string | undefined {
@@ -208,7 +215,7 @@ function parsePublicSourceEntry(raw: string): PublicSourceConfig | null {
     return null;
   }
 
-  return { publicKey: entry, publicPath, label };
+  return { publicKey: validatePublicUrl(entry), publicPath: publicPath ? decodeURIComponent(publicPath) : undefined, label };
 }
 
 function dedupePublicSources(sources: PublicSourceConfig[]): PublicSourceConfig[] {
@@ -251,17 +258,6 @@ export function getPublicSourcesInfo(): { variable: string; linkCount: number } 
 }
 
 /** Хвост публичной ссылки — чтобы в списке было видно, какая именно ссылка не открылась. */
-function publicKeyHint(publicKey: string): string {
-  const cleaned = publicKey.replace(/[?#].*$/, '').replace(/\/+$/, '');
-  const tail = cleaned.split('/').filter(Boolean).at(-1);
-  return tail || 'journal';
-}
-
-function describePublicTarget(group: Pick<PublicGroupSource, 'publicKey' | 'publicPath'>): string {
-  const where = group.publicPath ? ` (файл ${group.publicPath} внутри папки)` : '';
-  return `${group.publicKey}${where}`;
-}
-
 function parsePublicSourceList(raw: string): PublicSourceConfig[] {
   return raw
     .split(/[\n\r,;]+/)
@@ -381,8 +377,10 @@ async function readLocalFile(filePath?: string): Promise<JournalFileResult> {
   const configuredPath = filePath || process.env.JOURNAL_LOCAL_PATH?.trim() || './data/journal.xlsx';
   const absolutePath = path.isAbsolute(configuredPath)
     ? configuredPath
-    : path.join(process.cwd(), configuredPath);
+    : path.join(/* turbopackIgnore: true */ process.cwd(), configuredPath);
 
+  const info = await fs.stat(absolutePath);
+  if (info.size > MAX_FILE_BYTES) throw new JournalError('JOURNAL_TOO_LARGE');
   const buffer = await fs.readFile(absolutePath);
 
   return {
@@ -391,6 +389,8 @@ async function readLocalFile(filePath?: string): Promise<JournalFileResult> {
     sourceDetails: absolutePath,
     fileName: path.basename(absolutePath),
     groupNameHint: filenameToGroupName(path.basename(absolutePath)),
+    fetchedAt: info.mtime.toISOString(),
+    sync: { stale: false, checkedAt: new Date().toISOString() },
   };
 }
 
@@ -401,7 +401,7 @@ async function listLocalJournalFiles(): Promise<JournalGroupRef[]> {
   if (configuredFolder) {
     const absoluteFolder = path.isAbsolute(configuredFolder)
       ? configuredFolder
-      : path.join(process.cwd(), configuredFolder);
+      : path.join(/* turbopackIgnore: true */ process.cwd(), configuredFolder);
 
     const entries = await fs.readdir(absoluteFolder, { withFileTypes: true });
     return entries
@@ -413,7 +413,7 @@ async function listLocalJournalFiles(): Promise<JournalGroupRef[]> {
   if (configuredPath) {
     const absolutePath = path.isAbsolute(configuredPath)
       ? configuredPath
-      : path.join(process.cwd(), configuredPath);
+      : path.join(/* turbopackIgnore: true */ process.cwd(), configuredPath);
 
     return [buildGroupRef('local', absolutePath, path.basename(absolutePath))];
   }
@@ -423,23 +423,8 @@ async function listLocalJournalFiles(): Promise<JournalGroupRef[]> {
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    cache: 'no-store',
-  });
-
-  const payload = (await response.json().catch(() => ({}))) as T & {
-    message?: string;
-    error?: string;
-    description?: string;
-  };
-
-  if (!response.ok) {
-    const message = payload.description || payload.message || payload.error || 'Unknown Yandex Disk error';
-    throw new Error(`Ошибка Yandex Disk API: ${response.status} ${message}`);
-  }
-
-  return payload;
+  const buffer = await fetchSource(url, 'api', Object.fromEntries(new Headers(init?.headers).entries()));
+  try { return JSON.parse(buffer.toString('utf8')) as T; } catch { throw new JournalError('JOURNAL_FETCH_FAILED'); }
 }
 
 async function fetchDownloadUrl(url: string, init?: RequestInit): Promise<string> {
@@ -458,14 +443,7 @@ async function fetchDownloadUrl(url: string, init?: RequestInit): Promise<string
 }
 
 async function fetchFileBuffer(downloadUrl: string): Promise<Buffer> {
-  const response = await fetch(downloadUrl, { cache: 'no-store' });
-
-  if (!response.ok) {
-    throw new Error(`Не удалось скачать файл журнала: ${response.status} ${response.statusText}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return fetchSource(downloadUrl, 'download');
 }
 
 function getPrivateToken(): string {
@@ -499,6 +477,7 @@ async function readFromPrivateYandexDisk(filePath?: string): Promise<JournalFile
     sourceDetails: diskPath,
     fileName: basenameFromFilePath(diskPath),
     groupNameHint: filenameToGroupName(basenameFromFilePath(diskPath)),
+    fetchedAt: new Date().toISOString(),
   };
 }
 
@@ -578,6 +557,7 @@ async function readFromPublicYandexDisk(): Promise<JournalFileResult> {
     sourceDetails: source.publicPath || source.publicKey,
     fileName,
     groupNameHint: source.label || filenameToGroupName(fileName),
+    fetchedAt: new Date().toISOString(),
   };
 }
 
@@ -606,6 +586,7 @@ async function collectPublicFolderFiles(
 
     if (item.type === 'dir' && item.path && depth < MAX_PUBLIC_FOLDER_DEPTH) {
       const nested = await readPublicResourceMeta(source.publicKey, item.path);
+      if (!nested) throw new JournalError('JOURNAL_FETCH_FAILED');
       await collectPublicFolderFiles(source, nested, depth + 1, accumulator);
     }
   }
@@ -623,9 +604,7 @@ async function readPublicGroupsCache(): Promise<PublicGroupsCacheMeta | null> {
 async function writePublicGroupsCache(meta: PublicGroupsCacheMeta): Promise<void> {
   const cacheDir = getPublicCacheDir();
   await fs.mkdir(cacheDir, { recursive: true });
-  await fs
-    .writeFile(path.join(cacheDir, PUBLIC_CACHE_GROUPS_FILE), `${JSON.stringify(meta, null, 2)}\n`, 'utf8')
-    .catch(() => undefined);
+  await atomicJson(path.join(cacheDir, PUBLIC_CACHE_GROUPS_FILE), meta);
 }
 
 function sortPublicGroups(groups: PublicGroupSource[]): PublicGroupSource[] {
@@ -695,7 +674,7 @@ async function resolvePublicGroupsFromNetwork(cached: PublicGroupsCacheMeta | nu
       label: source.label,
       fileName:
         meta?.name ||
-        (source.publicPath ? basenameFromFilePath(source.publicPath) : `${publicKeyHint(source.publicKey)}.xlsx`),
+        (source.publicPath ? basenameFromFilePath(source.publicPath) : 'journal.xlsx'),
     });
   }
 
@@ -741,7 +720,7 @@ async function resolvePublicGroups(options: { force?: boolean } = {}): Promise<P
     })
     .catch((error) => {
       if (cacheIsCurrent) {
-        console.error('[journal-cache] Не удалось обновить список групп, работаем по прошлому списку:', error);
+        logJournalEvent('groups_refresh_failed', { code: publicJournalError(error).code });
         return cached.groups;
       }
       throw error;
@@ -763,7 +742,15 @@ async function readPublicCacheMeta(cacheDir: string): Promise<PublicJournalCache
 }
 
 async function writePublicCacheMeta(cacheDir: string, meta: PublicJournalCacheMeta): Promise<void> {
-  await fs.writeFile(path.join(cacheDir, PUBLIC_CACHE_META_FILE), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+  await atomicJson(path.join(cacheDir, PUBLIC_CACHE_META_FILE), meta);
+}
+
+async function atomicJson(target: string, value: unknown): Promise<void> {
+  const temp = `${target}.${crypto.randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    await fs.rename(temp, target);
+  } finally { await fs.rm(temp, { force: true }).catch(() => undefined); }
 }
 
 function isCacheMetaForCurrentSource(meta: PublicJournalCacheMeta | null, publicKey: string, publicPath?: string): meta is PublicJournalCacheMeta {
@@ -777,20 +764,17 @@ async function getValidLatestCachedVersion(cacheDir: string, publicKey: string, 
     return null;
   }
 
-  const latest = meta.versions.find((version) => version.fileName === meta.latestFileName) || meta.versions.at(-1);
-  if (!latest) {
-    return null;
+  for (const version of [...meta.versions].reverse()) {
+    if (path.basename(version.fileName) !== version.fileName) continue;
+    const filePath = path.join(cacheDir, version.fileName);
+    if (!(await fileExists(filePath))) continue;
+    try {
+      const buffer = await fs.readFile(filePath);
+      readValidatedJournal({ buffer, source: 'yandex-public-cache', sourceDetails: '', fetchedAt: version.downloadedAt });
+      return { ...version, filePath, buffer };
+    } catch { /* Try the prior validated snapshot; do not trust an old latest.json blindly. */ }
   }
-
-  const latestPath = path.isAbsolute(latest.filePath) ? latest.filePath : path.join(cacheDir, latest.fileName);
-  if (!(await fileExists(latestPath))) {
-    return null;
-  }
-
-  return {
-    ...latest,
-    filePath: latestPath,
-  };
+  return null;
 }
 
 function shouldUseCachedVersion(version: CachedJournalVersion, intervalMs: number): boolean {
@@ -813,7 +797,8 @@ async function cleanupOldCacheFiles(cacheDir: string, versionsToKeep: CachedJour
       continue;
     }
 
-    const versionPath = path.isAbsolute(version.filePath) ? version.filePath : path.join(cacheDir, version.fileName);
+    if (path.basename(version.fileName) !== version.fileName) continue;
+    const versionPath = path.join(cacheDir, version.fileName);
     await fs.rm(versionPath, { force: true }).catch(() => undefined);
   }
 
@@ -832,19 +817,15 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
   const originalFileName = sanitizeFileName(knownFileName || meta?.name || 'journal.xlsx');
   const extension = path.extname(originalFileName) || '.xlsx';
   const displayName = originalFileName;
-  const cachedFileName = `journal-${timestampForFileName(now)}${extension}`;
+  const cachedFileName = `journal-${timestampForFileName(now)}-${crypto.randomUUID().slice(0, 8)}${extension}`;
   const cachedFilePath = path.join(cacheDir, cachedFileName);
   const tempFilePath = `${cachedFilePath}.tmp`;
 
-  const buffer = await getPublicDownloadBuffer(group.publicKey, group.publicPath).catch((error: unknown) => {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `${reason} Ссылка: ${describePublicTarget(group)}. ` +
-        `Ссылки берутся из переменной ${getActivePublicSourceEnvName()}. ` +
-        'Проверь, что публичный доступ к файлу включён и ссылка не была пересоздана.',
-    );
-  });
-  await fs.writeFile(tempFilePath, buffer);
+  logJournalEvent('fetch_start');
+  const buffer = await getPublicDownloadBuffer(group.publicKey, group.publicPath);
+  // Parse and validate BEFORE publishing the file or changing metadata/retention.
+  readValidatedJournal({ buffer, source: 'yandex-public-cache', sourceDetails: '', fetchedAt: downloadedAt });
+  await fs.writeFile(tempFilePath, buffer, { mode: 0o600 });
   await fs.rename(tempFilePath, cachedFilePath);
 
   const existingMeta = await readPublicCacheMeta(cacheDir);
@@ -859,7 +840,7 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
     publicKey: group.publicKey,
     publicPath: group.publicPath,
   };
-  const versions = await cleanupOldCacheFiles(cacheDir, [...existingVersions, version]);
+  const versions = [...existingVersions, version].slice(-getPublicCacheMaxFiles());
 
   await writePublicCacheMeta(cacheDir, {
     latestFileName: version.fileName,
@@ -871,6 +852,9 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
     downloadedAt,
     versions,
   });
+
+  await cleanupOldCacheFiles(cacheDir, [...existingVersions, version]);
+  logJournalEvent('fetch_success', { bytes: buffer.length });
 
   return version;
 }
@@ -887,6 +871,10 @@ async function ensureFreshCachedPublicJournal(
   await fs.mkdir(cacheDir, { recursive: true });
 
   const latest = await getValidLatestCachedVersion(cacheDir, group.publicKey, group.publicPath);
+  const failure = runtime.failures?.get(runtimeKey);
+  if (latest && failure && Date.now() - failure.at < 60000) return latest;
+  // A forced refresh still respects a short per-source cooldown across users.
+  if (latest && options.force && Date.now() - new Date(latest.downloadedAt).getTime() < 30000) return latest;
   if (!options.force && latest && (shouldUseCachedVersion(latest, intervalMs) || !isWithinRefreshWindow())) {
     return latest;
   }
@@ -897,10 +885,13 @@ async function ensureFreshCachedPublicJournal(
   }
 
   const refreshPromise = downloadPublicJournalToCache(group)
+    .then((version) => { runtime.failures?.delete(runtimeKey); return version; })
     .catch((error) => {
+      const safe = publicJournalError(error);
+      runtime.failures?.set(runtimeKey, { at: Date.now(), code: safe.code, error: safe.error });
       // Не смогли скачать новую копию — отдаём прошлую, чтобы сайт и бот не падали.
       if (latest) {
-        console.error('[journal-cache] Не удалось обновить журнал, отдаём прошлую копию:', error);
+        logJournalEvent('refresh_failed', { code: safe.code, cached: true });
         return latest;
       }
       throw error;
@@ -920,7 +911,7 @@ async function refreshAllPublicJournals(options: { force?: boolean } = {}): Prom
     try {
       await ensureFreshCachedPublicJournal(group, options);
     } catch (error) {
-      console.error(`[journal-cache] Группа «${group.label || group.fileName}» не обновилась:`, error);
+      logJournalEvent('refresh_failed', { code: publicJournalError(error).code, cached: false });
     }
   }
 }
@@ -937,7 +928,7 @@ function startPublicCacheRefreshLoop(): void {
       return;
     }
     void refreshAllPublicJournals({ force: true }).catch((error) => {
-      console.error('[journal-cache] Не удалось обновить журнал:', error);
+      logJournalEvent('refresh_failed', { code: publicJournalError(error).code });
     });
   }, intervalMs);
 
@@ -954,7 +945,7 @@ export async function startJournalCache(): Promise<void> {
   // Стартовая загрузка с повторами: сеть при старте сервера иногда недоступна пару секунд.
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      await refreshAllPublicJournals({ force: true });
+      await refreshAllPublicJournals();
       return;
     } catch (error) {
       if (attempt === 3) {
@@ -983,11 +974,12 @@ async function resolvePublicGroupForPath(filePath?: string): Promise<PublicGroup
   return first;
 }
 
-async function readFromCachedPublicYandexDisk(filePath?: string): Promise<JournalFileResult> {
+async function readFromCachedPublicYandexDisk(filePath?: string, options: { force?: boolean; cachedOnly?: boolean } = {}): Promise<JournalFileResult> {
   startPublicCacheRefreshLoop();
   const group = await resolvePublicGroupForPath(filePath);
-  const cached = await ensureFreshCachedPublicJournal(group);
-  const buffer = await fs.readFile(cached.filePath);
+  const old = options.cachedOnly ? await getValidLatestCachedVersion(getGroupCacheDir(group), group.publicKey, group.publicPath) : null;
+  const cached = old ?? await ensureFreshCachedPublicJournal(group, options);
+  const buffer = cached.buffer ?? await fs.readFile(cached.filePath);
 
   return {
     buffer,
@@ -995,6 +987,14 @@ async function readFromCachedPublicYandexDisk(filePath?: string): Promise<Journa
     sourceDetails: `${cached.filePath} ← ${cached.publicPath || cached.publicKey}`,
     fileName: cached.displayName,
     groupNameHint: group.label || filenameToGroupName(cached.displayName),
+    fetchedAt: cached.downloadedAt,
+    sync: {
+      stale: !shouldUseCachedVersion(cached, getPublicCacheIntervalMs()) || Boolean(getCacheRuntime().failures?.get(getGroupCacheKey(group))),
+      checkedAt: new Date().toISOString(),
+      errorCode: getCacheRuntime().failures?.get(getGroupCacheKey(group))?.code,
+      error: getCacheRuntime().failures?.get(getGroupCacheKey(group))?.error,
+      nextRefreshAt: new Date(new Date(cached.downloadedAt).getTime() + getPublicCacheIntervalMs()).toISOString(),
+    },
   };
 }
 
@@ -1006,8 +1006,9 @@ export async function listJournalFiles(): Promise<JournalGroupRef[]> {
   }
 
   if (source === 'yandex-public') {
-    const file = await readFromPublicYandexDisk();
-    return [buildGroupRef('yandex-public', file.sourceDetails, file.fileName, file.groupNameHint)];
+    const source = getPublicSources()[0];
+    const meta = await readPublicResourceMeta(source.publicKey, source.publicPath);
+    return [buildGroupRef('yandex-public', source.publicPath || source.publicKey, meta?.name || 'journal.xlsx', source.label)];
   }
 
   if (source === 'yandex-public-cache') {
@@ -1026,7 +1027,7 @@ export async function listJournalFiles(): Promise<JournalGroupRef[]> {
   return listLocalJournalFiles();
 }
 
-export async function loadJournalFile(filePath?: string): Promise<JournalFileResult> {
+export async function loadJournalFile(filePath?: string, options: { force?: boolean; cachedOnly?: boolean } = {}): Promise<JournalFileResult> {
   const source = getSourceMode();
 
   if (source === 'yandex-private') {
@@ -1038,7 +1039,7 @@ export async function loadJournalFile(filePath?: string): Promise<JournalFileRes
   }
 
   if (source === 'yandex-public-cache') {
-    return readFromCachedPublicYandexDisk(filePath);
+    return readFromCachedPublicYandexDisk(filePath, options);
   }
 
   return readLocalFile(filePath);

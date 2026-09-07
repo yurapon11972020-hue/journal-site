@@ -7,11 +7,14 @@ import SubjectTabs from '@/components/subject-tabs';
 import { classifyMarkValue, markToneToClass } from '@/lib/mark-classifier';
 import type { GradeEntry, JournalData, LessonTopic, ReportCard } from '@/lib/types';
 import { useTheme } from '@/lib/use-theme';
+import GradeTimeline from '@/components/grade-timeline';
 
 interface DashboardProps {
   data: JournalData;
   backHref?: string;
   backLabel?: string;
+  /** Кнопка выхода нужна только тогда, когда вход по коду настроен. */
+  showLogout?: boolean;
 }
 
 type ReportSort = 'name' | 'avg-desc' | 'avg-asc' | 'absences';
@@ -47,6 +50,7 @@ interface SubjectColumn {
   label: string;
   monthLabel: string | null;
   dayLabel: string | null;
+  dateKey: string | null;
 }
 
 interface SubjectAggregate {
@@ -85,9 +89,7 @@ function compareNullableNumber(a: number | null, b: number | null, direction: 'a
 }
 
 function computeGroupStats(data: JournalData): GroupStats {
-  const averages = data.students
-    .map((student) => student.overallAverage)
-    .filter((value): value is number => value !== null);
+  const averages = data.students.flatMap((student) => student.subjects.flatMap((subject) => subject.grades.flatMap((grade) => grade.numericValues)));
 
   const averageGpa = averages.length
     ? averages.reduce((sum, value) => sum + value, 0) / averages.length
@@ -177,7 +179,7 @@ function buildSubjectKey(sheetName: string, subjectName: string): string {
 }
 
 function buildGradeMap(grades: GradeEntry[]): Map<string, GradeEntry> {
-  return new Map(grades.map((grade) => [`${grade.column}::${grade.label}`, grade]));
+  return new Map(grades.map((grade) => [grade.id, grade]));
 }
 
 function buildSubjectAggregates(data: JournalData): SubjectAggregate[] {
@@ -214,8 +216,8 @@ function buildSubjectAggregates(data: JournalData): SubjectAggregate[] {
         grades: subject.grades,
       });
 
-      for (const grade of subject.grades) {
-        const gradeKey = `${grade.column}::${grade.label}`;
+      for (const grade of subject.lessons) {
+        const gradeKey = grade.id;
         if (aggregate.columns.some((column) => column.key === gradeKey)) {
           continue;
         }
@@ -226,6 +228,7 @@ function buildSubjectAggregates(data: JournalData): SubjectAggregate[] {
           label: grade.label,
           monthLabel: grade.monthLabel,
           dayLabel: grade.dayLabel,
+          dateKey: grade.dateKey,
         });
       }
     }
@@ -256,12 +259,8 @@ function buildTopicDateMap(lessonTopics: LessonTopic[]): Map<string, LessonTopic
   const map = new Map<string, LessonTopic[]>();
 
   for (const topic of lessonTopics) {
-    const normalizedKey = topic.dateLabel
-      .toLowerCase()
-      .replace(/\\/g, '.')
-      .replace(/\//g, '.')
-      .replace(/-/g, '.')
-      .replace(/\s+/g, '');
+    const normalizedKey = topic.dateKey;
+    if (!normalizedKey) continue;
 
     const current = map.get(normalizedKey) ?? [];
     current.push(topic);
@@ -279,7 +278,7 @@ function getReportCardSubtitle(card: ReportCard): string {
   return `Средний балл: ${formatAverage(card.overallAverage)} · Уваж.: ${card.totalAbsences.valid || 0} · Неуваж.: ${card.totalAbsences.invalid || 0}`;
 }
 
-export default function Dashboard({ data, backHref, backLabel = 'Все группы' }: DashboardProps) {
+export default function Dashboard({ data, backHref, backLabel = 'Все группы', showLogout = false }: DashboardProps) {
   const subjectAggregates = useMemo(() => buildSubjectAggregates(data), [data]);
   const groupStats = useMemo(() => computeGroupStats(data), [data]);
   const [activeTab, setActiveTab] = useState<string>('report-cards');
@@ -362,14 +361,13 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
           <h1 className="page-title">{data.groupName || 'Группа без названия'}</h1>
         </div>
         <div className="page-header__actions">
-          <a
-            href="https://t.me/SKIBJOURNAL_BOT"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="theme-toggle theme-toggle--link"
-          >
-            <span aria-hidden>✈️</span> Телеграм-бот
-          </a>
+          {showLogout ? (
+            <form method="post" action="/api/logout">
+              <button className="theme-toggle" type="submit">
+                Выйти
+              </button>
+            </form>
+          ) : null}
           <button
             type="button"
             className="theme-toggle"
@@ -380,6 +378,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
         </div>
       </section>
 
+      <p className="mobile-group-counts">Студентов: {data.studentCount} · Предметов: {data.subjectCount}</p>
       <section className="stat-grid">
         <StatCard label="Студентов" value={String(groupStats.studentCount)} />
         <StatCard label="Предметов" value={String(groupStats.subjectCount)} />
@@ -401,16 +400,18 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
         />
       </section>
 
+      <details className="stats-explanation"><summary>Как считаются показатели</summary><p>Средний — по всем распознанным числовым оценкам. Пропуски — количество отметок Н и НУ; пустая клетка не означает присутствие. ЭН показаны отдельно в занятиях. Итоги из табеля могут отличаться от расчёта по отметкам.</p></details>
       <SubjectTabs
         items={[
           { id: 'report-cards', label: 'Табели' },
+          { id: 'grades', label: 'Оценки по датам' },
           ...subjectAggregates.map((subject) => ({ id: subject.id, label: subject.subjectName })),
         ]}
         activeId={activeTab}
         onSelect={setActiveTab}
       />
 
-      {activeTab === 'report-cards' ? (
+      {activeTab === 'grades' ? <GradeTimeline data={data} /> : activeTab === 'report-cards' ? (
         <section className="cards-stack">
           <div className="toolbar-row">
             <label className="search-box" htmlFor="report-card-search">
@@ -482,7 +483,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                           </span>
                         ) : null}
                       </div>
-                      <div className="sheet-card__meta">{getReportCardSubtitle(card)}</div>
+                      <div className="sheet-card__meta">{getReportCardSubtitle(card)} · {card.origin === 'source' ? 'Итоги из табеля' : 'Расчёт по отметкам'}</div>
                     </div>
                   </div>
                   <div className="sheet-toggle__aside">Предметов: {card.rows.length}</div>
@@ -505,7 +506,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                         {card.rows.map((row) => (
                           <tr key={`${card.studentId}-${row.index}-${row.subjectName}`}>
                             <td className="center-cell">{row.index}</td>
-                            <td>{row.subjectName}</td>
+                            <td>{row.subjectName}{row.origin === 'calculated' && card.origin === 'source' ? <small> · по отметкам</small> : null}</td>
                             <td className="center-cell">{row.session ? <MarkBadge value={row.session} /> : '—'}</td>
                             <td className="center-cell"><MarkBadge value={row.averageLabel ?? row.average} /></td>
                             <td className="center-cell"><ReportAbsenceBadge label={row.validAbsenceLabel} value={row.absences.valid} type="valid" /></td>
@@ -563,6 +564,16 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
             </div>
           </div>
 
+          <div className="subject-mobile">
+            {sortedSubjectStudents.map((student) => {
+              const marks = buildGradeMap(student.grades);
+              return <details className="student-lessons" key={student.studentId}>
+                <summary>{student.studentName}<span>Средний {formatAverage(student.average)} · Н {student.absences.invalid} · НУ {student.absences.valid}</span></summary>
+                {selectedSubject.columns.map((column) => <div className="mobile-lesson" key={column.key}><span>{column.label}</span><MarkBadge value={marks.get(column.key)?.value} /></div>)}
+                {!selectedSubject.columns.length ? <p>Даты занятий пока не заполнены.</p> : null}
+              </details>;
+            })}
+          </div>
           <div className="table-wrap table-wrap--subject">
             <table
               className={`journal-table subject-table ${getSubjectDensityClass(selectedSubject.columns.length)}`}
@@ -573,19 +584,13 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                   <th className="sticky-col sticky-col--num">№</th>
                   <th className="sticky-col sticky-col--name">Обучающийся</th>
                   {selectedSubject.columns.map((column) => {
-                    const topicKey = String(column.dayLabel || column.label || '')
-                      .toLowerCase()
-                      .replace(/[.,()]/g, '')
-                      .replace(/\\/g, '.')
-                      .replace(/\//g, '.')
-                      .replace(/-/g, '.')
-                      .replace(/\s+/g, '');
+                    const topicKey = column.dateKey || '';
                     const relatedTopics = selectedSubjectTopicMap.get(topicKey) ?? [];
 
                     return (
-                      <th key={column.key} className="lesson-head">
-                        <div className="lesson-head__day">{column.dayLabel || '—'}</div>
-                        <div className="lesson-head__month">{column.monthLabel || column.label}</div>
+                      <th key={column.key} className="lesson-head" title={column.label}>
+                        <div className="lesson-head__day">{column.label.split(' · ')[0]}</div>
+                        <div className="lesson-head__month">{column.label.split(' · ')[1] || (column.dateKey?.startsWith('--') ? 'год не указан' : '')}</div>
                         {relatedTopics.length ? (
                           <div className="lesson-head__topic-count">{relatedTopics.length} тема</div>
                         ) : null}

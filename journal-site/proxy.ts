@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-import { ACCESS_COOKIE_NAME, isAccessCodeEnabled, isValidAccessToken } from '@/lib/access';
+import { ACCESS_COOKIE_NAME, isValidAccessToken } from '@/lib/access';
 
-export async function middleware(request: NextRequest) {
-  if (!isAccessCodeEnabled()) {
+export async function proxy(request: NextRequest) {
+  if (['/login', '/api/login', '/api/logout', '/api/telegram'].includes(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
 
@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
   if (await isValidAccessToken(token)) {
     return NextResponse.next();
   }
+  if (request.nextUrl.pathname.startsWith('/api/')) return NextResponse.json({ code: 'JOURNAL_AUTH_REQUIRED', error: 'Войдите по коду своей группы.' }, { status: 401, headers: { 'Cache-Control': 'private, no-store' } });
 
   const loginUrl = new URL('/login', request.url);
   const target = `${request.nextUrl.pathname}${request.nextUrl.search}`;
@@ -29,6 +30,6 @@ export const config = {
      * - /api/telegram — вебхук вызывает Telegram, а не человек с cookie;
      * - служебных файлов Next.js и картинок.
      */
-    '/((?!login|api/login|api/telegram|_next/static|_next/image|favicon.ico|hero.jpg).*)',
+    '/((?!_next/static|_next/image|favicon.ico|hero.jpg).*)',
   ],
 };

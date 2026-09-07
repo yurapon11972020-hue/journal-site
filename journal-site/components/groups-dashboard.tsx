@@ -3,11 +3,13 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
-import type { JournalGroupRef } from '@/lib/types';
+import type { JournalGroupView } from '@/lib/types';
 import { useTheme } from '@/lib/use-theme';
 
 interface GroupsDashboardProps {
-  groups: JournalGroupRef[];
+  groups: JournalGroupView[];
+  /** Кнопка выхода нужна только тогда, когда вход по коду настроен. */
+  showLogout?: boolean;
 }
 
 // Начиная с этого количества групп показываем поиск по списку.
@@ -30,7 +32,7 @@ function groupsWord(count: number): string {
   return 'групп';
 }
 
-export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
+export default function GroupsDashboard({ groups, showLogout = false }: GroupsDashboardProps) {
   const { theme, toggleTheme } = useTheme();
   const [query, setQuery] = useState('');
 
@@ -55,14 +57,13 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
         <div className="hero__top">
           <span className="hero__badge">❄️ Электронный журнал</span>
           <div className="hero__actions">
-            <a
-              href="https://t.me/SKIBJOURNAL_BOT"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hero__btn"
-            >
-              ✈️ Бот
-            </a>
+            {showLogout ? (
+              <form method="post" action="/api/logout">
+                <button className="hero__btn" type="submit">
+                  Выйти
+                </button>
+              </form>
+            ) : null}
             <button
               type="button"
               className="hero__btn"
@@ -114,7 +115,7 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
         </section>
       ) : (
         <section className="groups-empty">
-          {groups.length ? 'Ничего не нашлось. Проверь написание.' : 'Список групп пуст — проверь ссылки на Яндекс.Диск.'}
+          {groups.length ? 'Ничего не нашлось. Проверь написание.' : 'Для этого кода пока нет доступных групп. Обратитесь к куратору.'}
         </section>
       )}
     </main>
