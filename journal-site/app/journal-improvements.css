@@ -1,7 +1,13 @@
-.sync-bar, .changes-panel { max-width: 1520px; margin: 16px auto 0; padding: 16px 24px; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; }
-.sync-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.sync-bar__label { display: block; color: var(--muted); margin-bottom: 4px; }
-.sync-bar time { font-size: 0.95rem; }
+.changes-panel { max-width: 1520px; margin: 16px auto 0; padding: 16px 24px; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; }
+
+/* Свежесть данных — это подпись, а не панель во весь экран.
+   Раньше блок занимал верх страницы, а на телефоне — треть первого экрана. */
+.sync-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 1520px; margin: 14px auto 0; padding: 0 24px; color: var(--muted); font-size: 0.85rem; }
+.sync-bar__time { white-space: nowrap; }
+.sync-bar__refresh { min-height: 0; padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.85rem; cursor: pointer; }
+.sync-bar__refresh:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-strong); }
+.sync-bar__refresh:disabled { opacity: 0.6; cursor: wait; }
+.sync-warning { flex-basis: 100%; margin: 2px 0 0; }
 .sync-warning { flex-basis: 100%; margin: 0; padding: 12px; border-left: 3px solid #d98c16; background: var(--panel-alt); border-radius: 4px; }
 .sync-bar button:disabled { opacity: 0.65; cursor: wait; }
 .changes-panel summary { cursor: pointer; }
@@ -33,11 +39,12 @@
 .lesson-head__month, .sheet-card__meta, .toolbar-note, .stat-card__label { font-size: 0.875rem; }
 button, input, select { min-height: 42px; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
-@media (max-width: 1600px) { .sync-bar, .changes-panel { margin-left: 24px; margin-right: 24px; } }
+@media (max-width: 1600px) { .changes-panel { margin-left: 24px; margin-right: 24px; } }
 @media (max-width: 640px) {
-  .sync-bar, .changes-panel { margin: 12px 12px 0; padding: 14px; }
-  .sync-bar { align-items: flex-start; }
-  .sync-bar .theme-toggle { width: 100%; }
+  .changes-panel { margin: 12px 12px 0; padding: 14px; }
+  .sync-bar { margin: 10px 0 0; padding: 0 14px; }
+  /* Кнопки в шапке не растягиваем на всю ширину: их несколько. */
+  .page-header__actions .theme-toggle { flex: 0 0 auto; }
   .grade-feed { grid-template-columns: 1fr; }
   .subject-mobile { display: block; }
   .table-wrap--subject { display: none; }

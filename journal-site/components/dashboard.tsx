@@ -361,6 +361,14 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
           <h1 className="page-title">{data.groupName || 'Группа без названия'}</h1>
         </div>
         <div className="page-header__actions">
+          <a
+            href="https://t.me/SKIBJOURNAL_BOT"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="theme-toggle theme-toggle--link"
+          >
+            <span aria-hidden>✈️</span> Телеграм-бот
+          </a>
           {showLogout ? (
             <form method="post" action="/api/logout">
               <button className="theme-toggle" type="submit">
@@ -400,7 +408,6 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
         />
       </section>
 
-      <details className="stats-explanation"><summary>Как считаются показатели</summary><p>Средний — по всем распознанным числовым оценкам. Пропуски — количество отметок Н и НУ; пустая клетка не означает присутствие. ЭН показаны отдельно в занятиях. Итоги из табеля могут отличаться от расчёта по отметкам.</p></details>
       <SubjectTabs
         items={[
           { id: 'report-cards', label: 'Табели' },
@@ -483,7 +490,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                           </span>
                         ) : null}
                       </div>
-                      <div className="sheet-card__meta">{getReportCardSubtitle(card)} · {card.origin === 'source' ? 'Итоги из табеля' : 'Расчёт по отметкам'}</div>
+                      <div className="sheet-card__meta">{getReportCardSubtitle(card)}</div>
                     </div>
                   </div>
                   <div className="sheet-toggle__aside">Предметов: {card.rows.length}</div>
@@ -590,7 +597,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                     return (
                       <th key={column.key} className="lesson-head" title={column.label}>
                         <div className="lesson-head__day">{column.label.split(' · ')[0]}</div>
-                        <div className="lesson-head__month">{column.label.split(' · ')[1] || (column.dateKey?.startsWith('--') ? 'год не указан' : '')}</div>
+                        <div className="lesson-head__month">{column.label.split(' · ')[1] || ''}</div>
                         {relatedTopics.length ? (
                           <div className="lesson-head__topic-count">{relatedTopics.length} тема</div>
                         ) : null}
