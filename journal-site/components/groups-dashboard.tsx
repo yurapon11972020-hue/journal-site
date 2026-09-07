@@ -57,6 +57,14 @@ export default function GroupsDashboard({ groups, showLogout = false }: GroupsDa
         <div className="hero__top">
           <span className="hero__badge">❄️ Электронный журнал</span>
           <div className="hero__actions">
+            <a
+              href="https://t.me/SKIBJOURNAL_BOT"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hero__btn"
+            >
+              ✈️ Бот
+            </a>
             {showLogout ? (
               <form method="post" action="/api/logout">
                 <button className="hero__btn" type="submit">
@@ -107,9 +115,6 @@ export default function GroupsDashboard({ groups, showLogout = false }: GroupsDa
               title={group.fileName}
             >
               <span className="group-card__name">{group.groupName}</span>
-              {group.fileName && group.fileName !== group.groupName ? (
-                <span className="group-card__meta">{group.fileName}</span>
-              ) : null}
             </Link>
           ))}
         </section>

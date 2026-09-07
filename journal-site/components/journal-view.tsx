@@ -64,9 +64,14 @@ export default function JournalView({
   const stale = warning || data.sync?.error || (data.sync?.stale ? 'Показана сохранённая версия. Обновление выполняется по расписанию источника.' : '');
   return <>
     <div className="sync-bar" aria-live="polite">
-      <div><span className="sync-bar__label">{data.source === 'local' ? 'Версия файла' : 'Последняя синхронизация'}</span><time dateTime={data.updatedAt}>{new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Yekaterinburg' }).format(new Date(data.updatedAt))} · UTC+5</time></div>
-      <button type="button" className="theme-toggle" disabled={refreshing || cooldown} onClick={() => void refresh(true)}>{refreshing ? 'Получаем данные журнала…' : cooldown ? 'Пауза между обновлениями · 30 с' : 'Обновить данные'}</button>
-      {stale ? <p role="status" className="sync-warning">{stale} Отображается версия от указанного времени.</p> : null}
+      <span className="sync-bar__time">
+        Данные на{' '}
+        <time dateTime={data.updatedAt}>
+          {new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(data.updatedAt))}
+        </time>
+      </span>
+      <button type="button" className="sync-bar__refresh" disabled={refreshing || cooldown} onClick={() => void refresh(true)}>{refreshing ? 'Обновляем…' : cooldown ? 'Подождите 30 с' : 'Обновить'}</button>
+      {stale ? <p role="status" className="sync-warning">{stale}</p> : null}
     </div>
     {changes.length ? <details className="changes-panel"><summary>Изменения после обновления: {changes.length}</summary><ul>{changes.slice(0, 50).map((change, index) => <li key={index}>{change.student} · {change.subject} · {change.dateLabel}: {change.kind === 'added' ? 'добавлена отметка ' + change.after : change.kind === 'removed' ? 'удалена отметка ' + change.before : change.before + ' → ' + change.after}</li>)}</ul>{changes.length > 50 ? <p>Показаны первые 50 изменений.</p> : null}</details> : null}
     <Dashboard data={data} backHref="/" backLabel="Мои группы" showLogout={showLogout} />

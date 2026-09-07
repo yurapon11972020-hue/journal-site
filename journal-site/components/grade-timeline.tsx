@@ -15,15 +15,22 @@ export default function GradeTimeline({ data }: { data: JournalData }) {
       <label className="search-box">Предмет<select className="search-box__input" value={subjectName} onChange={(e) => setSubjectName(e.target.value)}><option value="">Все предметы</option>{data.subjects.map((subject) => <option key={subject.sheetName} value={subject.sheetName}>{subject.subjectName}</option>)}</select></label>
       <label className="search-box">День и месяц<input className="search-box__input" type="text" placeholder="Например, 08.09" value={day} onChange={(e) => setDay(e.target.value)} /></label>
     </div>
-    <p className="toolbar-note">Отметки из журнала: {records.length}. Если источник не указал год, показаны день и месяц в порядке занятий.</p>
+    <p className="toolbar-note">
+      Отметок: {records.length}
+      {records.length > limit ? ` · показаны первые ${limit}` : ''}
+    </p>
     <div className="grade-feed">{records.slice(0, limit).map(({ student, subject, grade }) => {
       const mark = classifyMarkValue(grade.value);
       return <article className="grade-card" key={student.key + grade.id}>
         <span className={'mark ' + markToneToClass(mark.tone)}>{mark.displayText}</span>
-        <div><h3>{subject.subjectName}</h3><p>{student.name}</p><span>{grade.label}{!grade.date ? ' · год не указан' : ''}</span></div>
+        <div><h3>{subject.subjectName}</h3><p>{student.name}</p><span>{grade.label}</span></div>
       </article>;
     })}</div>
     {!records.length ? <p className="empty-state">По этим условиям отметок нет.</p> : null}
-    {records.length > limit ? <button className="theme-toggle" onClick={() => setLimit((value) => value + 60)}>Показать ещё</button> : null}
+    {records.length > limit ? (
+      <button type="button" className="theme-toggle" onClick={() => setLimit((value) => value + 60)}>
+        Показать ещё
+      </button>
+    ) : null}
   </section>;
 }
