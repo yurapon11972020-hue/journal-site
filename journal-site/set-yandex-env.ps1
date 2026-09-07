@@ -1,39 +1,46 @@
-$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$envPath = Join-Path $projectRoot '.env.local'
-Write-Host 'Настройка публичных ссылок Яндекс.Диска. Остальные настройки сохранятся.'
-Write-Host 'Введите ссылки по одной; пустая строка завершает ввод. Формат: Название = https://disk.yandex.ru/i/ВАША_ССЫЛКА'
+$envPath = Join-Path $projectRoot ".env.local"
+
+Write-Host "Настройка публичных ссылок Яндекс.Диска (без OAuth-токена)" -ForegroundColor Cyan
+Write-Host "Вводи ссылки по одной. Пустая строка — закончить ввод." -ForegroundColor Gray
+Write-Host "Можно дать группе своё имя: ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА" -ForegroundColor Gray
+Write-Host "Ссылка на папку (/d/...) сама развернётся во все Excel-файлы внутри." -ForegroundColor Gray
+
 $links = @()
 while ($true) {
-  $entry = Read-Host ('Ссылка ' + ($links.Count + 1))
-  if ([string]::IsNullOrWhiteSpace($entry)) { break }
-  $urlText = ($entry -replace '^.*?=\s*(?=https://)', '').Split('#')[0].Trim()
-  $journalUri = $null
-  if (-not [Uri]::TryCreate($urlText, [UriKind]::Absolute, [ref]$journalUri) -or $journalUri.Scheme -ne 'https' -or $journalUri.Host -notin @('disk.yandex.ru', 'disk.yandex.com', 'yadi.sk') -or $journalUri.UserInfo -or -not $journalUri.IsDefaultPort -or $journalUri.Query -or $journalUri.AbsolutePath -notmatch '^/(i|d)/[A-Za-z0-9_-]+/?$' -or $entry -match '["''$`\r\n]') {
-    throw 'Нужна корректная HTTPS-ссылка Яндекс.Диска без дополнительных параметров.'
-  }
-  $links += $entry.Trim()
+  $index = $links.Count + 1
+  $link = Read-Host "Ссылка $index"
+  if ([string]::IsNullOrWhiteSpace($link)) { break }
+  $links += $link.Trim()
 }
-if (-not $links.Count) { Write-Host 'Ссылки не введены. Файл настроек не изменён.'; return }
-$intervalText = Read-Host 'Интервал в минутах (30 по умолчанию)'
-$interval = 30
-if ($intervalText -and (-not [int]::TryParse($intervalText, [ref]$interval) -or $interval -lt 1)) { throw 'Интервал должен быть положительным целым числом.' }
-$updates = [ordered]@{
-  JOURNAL_SOURCE = 'yandex-public-cache'
-  YANDEX_DISK_PUBLIC_URLS = '"' + [string]::Join(',', $links) + '"'
-  JOURNAL_CACHE_INTERVAL_MINUTES = [string]$interval
+
+if ($links.Count -eq 0) {
+  $links = @("https://disk.yandex.ru/i/jr0lr00cUQp0FQ", "https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg", "https://disk.yandex.ru/i/ezTOIqg1oAictA")
+  Write-Host "Ссылки не введены, беру ссылки журналов по умолчанию." -ForegroundColor Yellow
 }
-$lines = if (Test-Path -LiteralPath $envPath) { @(Get-Content -LiteralPath $envPath) } else { @() }
-foreach ($key in $updates.Keys) {
-  $value = [string]$updates[$key]
-  $pattern = '^\s*' + [regex]::Escape($key) + '\s*='
-  $found = $false
-  $lines = @($lines | ForEach-Object {
-    if ($_ -match $pattern) {
-      if (-not $found) { $key + '=' + $value; $found = $true }
-    } else { $_ }
-  })
-  if (-not $found) { $lines += $key + '=' + $value }
+
+$minutes = Read-Host "Интервал обновления в минутах (по умолчанию 30)"
+if ([string]::IsNullOrWhiteSpace($minutes)) {
+  $minutes = "30"
 }
-[IO.File]::WriteAllLines($envPath, [string[]]$lines)
-Write-Host 'Источник обновлён. Настройте групповые коды по README.md и перезапустите сервер.'
+
+$maxFiles = Read-Host "Сколько последних версий хранить на каждую группу (по умолчанию 2)"
+if ([string]::IsNullOrWhiteSpace($maxFiles)) {
+  $maxFiles = "2"
+}
+
+$joinedLinks = [string]::Join(",", $links)
+
+@"
+JOURNAL_SOURCE=yandex-public-cache
+YANDEX_DISK_PUBLIC_URLS=$joinedLinks
+JOURNAL_CACHE_INTERVAL_MINUTES=$minutes
+JOURNAL_CACHE_MAX_FILES=$maxFiles
+JOURNAL_CACHE_DIR=./.journal-cache
+JOURNAL_REFRESH_FROM_HOUR=5
+JOURNAL_REFRESH_TO_HOUR=24
+JOURNAL_TIMEZONE_OFFSET_HOURS=5
+"@ | Set-Content -Path $envPath -Encoding UTF8
+
+Write-Host "Готово: создан файл .env.local с $($links.Count) ссылкой(ами)" -ForegroundColor Green
+Write-Host "Теперь можно запускать: npm run dev" -ForegroundColor Yellow

@@ -1,5 +1,3 @@
-import { parseMarkValue } from '@/lib/mark-values';
-
 export type MarkTone =
   | 'excellent'
   | 'good'
@@ -69,7 +67,6 @@ function toneFromNumericValue(value: number): MarkTone {
   if (!Number.isFinite(value) || value <= 0) {
     return 'empty';
   }
-  if (value < 1 || value > 5) return 'plain';
 
   if (value >= 4.5) {
     return 'excellent';
@@ -196,9 +193,18 @@ export function classifyMarkValue(value: string | number | null | undefined): Cl
     return { tone: 'absence', displayText, isColored: true };
   }
 
-  const marks = parseMarkValue(displayText).numbers;
-  if (marks.length) {
-    const tone = marks.length === 1 ? toneFromNumericValue(marks[0]) : toneFromGrades(marks);
+  const numericText = key.replace(',', '.');
+  if (/^[1-5](?:\.\d+)?$/.test(numericText)) {
+    const numericValue = Number(numericText);
+    const tone = toneFromNumericValue(numericValue);
+    return { tone, displayText, isColored: tone !== 'empty' && tone !== 'plain' };
+  }
+
+  // Multiple marks in one Excel cell, for example "4/5", "4 5", "4;5".
+  // We do not color arbitrary text with embedded digits anymore.
+  if (/^[1-5](?:[\/;,;+\- ]+[1-5])+$/.test(displayText.replace(/\s+/g, ' ').trim())) {
+    const grades = displayText.match(/[1-5]/g)?.map(Number) ?? [];
+    const tone = toneFromGrades(grades);
     return { tone, displayText, isColored: tone !== 'plain' };
   }
 

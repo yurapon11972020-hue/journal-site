@@ -1,12 +1,11 @@
 import './globals.css';
 import './redesign.css';
-import './journal-improvements.css';
 import type { Metadata, Viewport } from 'next';
 import { Manrope, Unbounded } from 'next/font/google';
 import type { ReactNode } from 'react';
 
 import TelegramInit from '@/components/telegram-init';
-import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/theme-config';
+import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/use-theme';
 
 // Шрифты раздаются со своего домена: нет обращения в Google из браузера
 // и нет скачка вёрстки, пока шрифт грузится.
