@@ -52,8 +52,10 @@
       el.dataset.cap = item.caption || '';
     }
 
+    const fitClass = item.fit === 'contain' ? ' polaroid__frame--contain' : '';
+
     el.innerHTML = `
-      <div class="polaroid__frame">
+      <div class="polaroid__frame${fitClass}">
         ${hasPhoto
           ? `<img src="${item.src}" alt="${item.caption || 'Фото'}" loading="lazy">`
           : PLACEHOLDER}
