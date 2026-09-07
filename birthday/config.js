@@ -5,10 +5,11 @@
 
 const CONFIG = {
   /* Имя именинницы — на первом экране и в бегущей строке */
-  name: 'Имя',
+  name: 'Алёна',
 
-  /* От кого — подпись в финале */
-  from: 'Тимофей',
+  /* Подпись — на первом экране, в бегущей строке и в финале.
+     Пишется как есть, поэтому «от Тимофея», а не «Тимофей» */
+  signature: 'от Тимофея',
 
   /* День и месяц рождения. Год подставляется сам (ближайший будущий) */
   day: 17,
@@ -24,18 +25,18 @@ const CONFIG = {
 
      src     — путь к файлу внутри photos/, например 'photos/1.jpg'.
                Пока null — рисуется пустая рамка.
-     caption — подпись от руки под фото.
+     caption — подпись от руки под фото. Пустая — подписи нет.
      tilt    — наклон рамки в градусах.
      -------------------------------------------------------------- */
   photos: [
-    { src: null, caption: 'мы',            tilt: -8 },
-    { src: null, caption: '17.09',         tilt:  6 },
-    { src: null, caption: '✦',             tilt: -3 },
-    { src: null, caption: 'наш класс',     tilt:  5 },
-    { src: null, caption: 'то самое лето', tilt: -6 },
-    { src: null, caption: 'смешная',       tilt:  4 },
-    { src: null, caption: 'просто так',    tilt: -5 },
-    { src: null, caption: 'любимое фото',  tilt:  7 },
+    { src: null, caption: '', tilt: -8 },
+    { src: null, caption: '', tilt: 6 },
+    { src: null, caption: '', tilt: -3 },
+    { src: null, caption: '', tilt: 5 },
+    { src: null, caption: '', tilt: -6 },
+    { src: null, caption: '', tilt: 4 },
+    { src: null, caption: '', tilt: -5 },
+    { src: null, caption: '', tilt: 7 },
   ],
 
   /* Пожелания — коротко. Можно убрать лишние или дописать свои */

@@ -188,7 +188,15 @@ section, header, footer { position: relative; z-index: 2; }
   letter-spacing: .02em;
 }
 
-.hero__scroll { margin-top: 52px; display: grid; justify-items: center; gap: 12px; }
+.hero__from {
+  margin-top: 18px;
+  font-family: var(--marker); font-weight: 700;
+  font-size: clamp(1.5rem, 4.4vw, 2rem);
+  line-height: 1;
+  color: var(--pink);
+}
+
+.hero__scroll { margin-top: 46px; display: grid; justify-items: center; gap: 12px; }
 .hero__scroll span {
   width: 1px; height: 52px;
   background: linear-gradient(var(--pink), transparent);
@@ -204,19 +212,19 @@ section, header, footer { position: relative; z-index: 2; }
    ПОЛЯРОИДЫ, РАЗБРОСАННЫЕ ПО СТРАНИЦЕ
    ========================================================= */
 .scatter { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
-.scatter .polaroid { position: absolute; width: 172px; pointer-events: auto; }
+.scatter .polaroid { position: absolute; width: 232px; pointer-events: auto; }
 
 .scatter--hero  .polaroid:nth-child(1) { left: 4%;   top: 15%;    animation: float 7s ease-in-out infinite; }
 .scatter--hero  .polaroid:nth-child(2) { right: 5%;  top: 22%;    animation: float 7s ease-in-out -2.4s infinite; }
 .scatter--hero  .polaroid:nth-child(3) { left: 10%;  bottom: 9%;  animation: float 7s ease-in-out -4.8s infinite; }
 
-.scatter--letter .polaroid:nth-child(1) { left: 5%;  top: 16%;    width: 190px; }
-.scatter--letter .polaroid:nth-child(2) { right: 6%; bottom: 14%; width: 190px; }
+.scatter--letter .polaroid:nth-child(1) { left: 5%;  top: 14%;    width: 252px; }
+.scatter--letter .polaroid:nth-child(2) { right: 6%; bottom: 12%; width: 252px; }
 
-.scatter--wishes .polaroid:nth-child(1) { right: 4%; top: 12%;    width: 178px; }
-.scatter--wishes .polaroid:nth-child(2) { left: 4%;  bottom: 12%; width: 178px; }
+.scatter--wishes .polaroid:nth-child(1) { right: 4%; top: 10%;    width: 242px; }
+.scatter--wishes .polaroid:nth-child(2) { left: 4%;  bottom: 10%; width: 242px; }
 
-.scatter--finale .polaroid:nth-child(1) { right: 8%; top: 26%;    width: 168px; }
+.scatter--finale .polaroid:nth-child(1) { right: 8%; top: 22%;    width: 238px; }
 
 @keyframes float { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-14px) } }
 
@@ -233,7 +241,7 @@ section, header, footer { position: relative; z-index: 2; }
   .scatter { scrollbar-width: none; }
   .scatter .polaroid {
     position: static; animation: none !important;
-    flex: 0 0 min(54vw, 210px); width: auto;
+    flex: 0 0 min(74vw, 300px); width: auto;
     scroll-snap-align: center;
   }
   .scatter:empty { display: none; }
@@ -255,7 +263,7 @@ section, header, footer { position: relative; z-index: 2; }
   content: '';
   position: absolute; top: -12px; left: 50%;
   transform: translateX(-50%) rotate(-3deg);
-  width: 76px; height: 24px;
+  width: 92px; height: 28px;
   background: rgba(255,31,143,.55);
   box-shadow: 0 1px 4px rgba(0,0,0,.5);
 }
@@ -293,10 +301,10 @@ section, header, footer { position: relative; z-index: 2; }
 .polaroid__cap {
   font-family: var(--marker);
   font-weight: 500;
-  font-size: 1.3rem;
+  font-size: 1.35rem;
   color: #1a1a1e;
-  padding: 9px 6px 15px;
-  min-height: 48px;
+  padding: 10px 6px 18px;
+  min-height: 54px;
   display: grid; place-items: center;
   line-height: 1;
 }
@@ -411,6 +419,7 @@ section, header, footer { position: relative; z-index: 2; }
   margin-bottom: 1.15em;
 }
 .letter__card b { font-weight: 600; color: var(--pink); }
+.letter__card p:last-child { margin-bottom: 0; }
 .letter__hi {
   font-family: var(--display) !important;
   font-weight: 900 !important;
@@ -420,24 +429,6 @@ section, header, footer { position: relative; z-index: 2; }
   text-transform: uppercase;
   margin-bottom: .8em !important;
 }
-.letter__sign {
-  margin: 1.5em 0 0 !important;
-  padding-top: 1.3em;
-  border-top: 1px solid var(--line);
-  font-family: var(--pixel) !important;
-  font-size: .55rem !important;
-  line-height: 2.2 !important;
-  letter-spacing: .08em;
-  color: var(--gray) !important;
-  text-transform: uppercase;
-}
-.letter__sign span {
-  font-family: var(--marker); font-weight: 700;
-  font-size: 3.6em; color: var(--pink);
-  display: inline-block; margin-left: .5em;
-  vertical-align: -.34em; text-transform: none;
-}
-
 /* =========================================================
    ПОЖЕЛАНИЯ
    ========================================================= */
@@ -483,7 +474,7 @@ section, header, footer { position: relative; z-index: 2; }
 }
 .finale__sign {
   font-family: var(--marker); font-weight: 700;
-  font-size: clamp(3.2rem, 13vw, 6rem);
+  font-size: clamp(2.6rem, 10vw, 5rem);
   color: var(--pink);
   margin-top: 26px; line-height: 1;
   text-shadow: 0 0 50px rgba(255,31,143,.5);

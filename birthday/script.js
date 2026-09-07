@@ -10,11 +10,13 @@
   /* ---------- имя и подписи ---------- */
   const setGlitch = (el, text) => { el.textContent = text; el.dataset.text = text; };
   setGlitch($('#heroName'), CONFIG.name);
-  setGlitch($('#finaleSign'), CONFIG.from);
+  setGlitch($('#finaleSign'), CONFIG.signature);
+  $('#heroFrom').textContent = CONFIG.signature;
   document.title = `С Днём Рождения, ${CONFIG.name}`;
 
   /* ---------- бегущая строка ---------- */
-  const marqueeText = `С ДНЁМ РОЖДЕНИЯ ✦ ${CONFIG.name.toUpperCase()} ✦ 17 · 09 ✦ `;
+  const marqueeText = `С ДНЁМ РОЖДЕНИЯ ✦ ${CONFIG.name.toUpperCase()} ✦ 17 · 09 ✦ `
+                    + `${CONFIG.signature.toUpperCase()} ✦ `;
   ['#marquee1', '#marquee2'].forEach(sel => {
     const track = $(sel);
     /* два одинаковых блока подряд — чтобы прокрутка была бесшовной */
@@ -44,7 +46,8 @@
 
     if (hasPhoto) {
       el.type = 'button';
-      el.setAttribute('aria-label', 'Открыть фото: ' + (item.caption || ''));
+      el.setAttribute('aria-label',
+        item.caption ? 'Открыть фото: ' + item.caption : 'Открыть фото');
       el.dataset.src = item.src;
       el.dataset.cap = item.caption || '';
     }
