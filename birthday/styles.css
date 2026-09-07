@@ -397,7 +397,7 @@ section, header, footer { position: relative; z-index: 2; }
 }
 .letter__card {
   position: relative; z-index: 3;
-  max-width: 620px;
+  max-width: 520px;
   background: var(--bg-2);
   border: 1px solid var(--line);
   padding: clamp(38px, 7vw, 62px) clamp(26px, 6vw, 54px);
