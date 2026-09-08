@@ -8,23 +8,15 @@ interface ScrollAreaProps {
   children: ReactNode;
   className?: string;
   innerClassName?: string;
-  prevLabel?: string;
-  nextLabel?: string;
 }
 
 /**
- * Обёртка для широкого содержимого: показывает затемнение у краёв,
- * когда есть продолжение, и даёт кнопки листания. На телефоне таблицу
- * предмета неудобно возить пальцем — кнопкой понятнее и точнее.
+ * Обёртка для широкого содержимого: таблица возится пальцем, как привычно
+ * на телефоне, а у края появляется затемнение — видно, что есть продолжение.
+ * Кнопок листания нарочно нет: они занимали место и мешали.
  */
-export default function ScrollArea({
-  children,
-  className = '',
-  innerClassName = '',
-  prevLabel = 'Показать предыдущие',
-  nextLabel = 'Показать следующие',
-}: ScrollAreaProps) {
-  const { ref, moreLeft, moreRight, scrollByStep } = useHorizontalScroll();
+export default function ScrollArea({ children, className = '', innerClassName = '' }: ScrollAreaProps) {
+  const { ref, moreLeft, moreRight } = useHorizontalScroll();
 
   const wrapperClassName = [
     'scroll-area',
@@ -37,30 +29,6 @@ export default function ScrollArea({
 
   return (
     <div className={wrapperClassName}>
-      {/* Кнопки стоят над содержимым, а не поверх него: поверх они закрывали
-          фамилии и оценки. Показываются только когда есть что листать. */}
-      <div className="scroll-area__controls" aria-hidden={!moreLeft && !moreRight}>
-        <span className="scroll-area__hint">Листать даты</span>
-        <button
-          type="button"
-          className="scroll-area__arrow"
-          onClick={() => scrollByStep(-1)}
-          aria-label={prevLabel}
-          disabled={!moreLeft}
-        >
-          ‹
-        </button>
-        <button
-          type="button"
-          className="scroll-area__arrow"
-          onClick={() => scrollByStep(1)}
-          aria-label={nextLabel}
-          disabled={!moreRight}
-        >
-          ›
-        </button>
-      </div>
-
       <div className={`scroll-area__viewport ${innerClassName}`.trim()} ref={ref}>
         {children}
       </div>

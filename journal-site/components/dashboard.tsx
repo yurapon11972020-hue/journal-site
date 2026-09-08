@@ -574,12 +574,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
             </div>
           </div>
 
-          <ScrollArea
-            className="scroll-area--table"
-            innerClassName="table-wrap table-wrap--subject"
-            prevLabel="Показать предыдущие занятия"
-            nextLabel="Показать следующие занятия"
-          >
+          <ScrollArea className="scroll-area--table" innerClassName="table-wrap table-wrap--subject">
             <table
               className={`journal-table subject-table ${getSubjectDensityClass(selectedSubject.columns.length)}`}
               style={{ ['--lesson-count' as const]: String(Math.max(selectedSubject.columns.length, 1)) } as CSSProperties}
@@ -587,7 +582,10 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
               <thead>
                 <tr>
                   <th className="sticky-col sticky-col--num">№</th>
-                  <th className="sticky-col sticky-col--name">Обучающийся</th>
+                  <th className="sticky-col sticky-col--name">
+                    <span className="col-label-full">Обучающийся</span>
+                    <span className="col-label-short">Студент</span>
+                  </th>
                   {selectedSubject.columns.map((column) => {
                     const topicKey = String(column.dayLabel || column.label || '')
                       .toLowerCase()
@@ -608,9 +606,20 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                       </th>
                     );
                   })}
-                  <th className="summary-col">Средний</th>
-                  <th className="summary-col">Уваж.</th>
-                  <th className="summary-col">Неуваж.</th>
+                  {/* На телефоне заголовки распирают столбцы и съедают место
+                      у дат, поэтому там показывается сокращённая подпись. */}
+                  <th className="summary-col" title="Средний балл">
+                    <span className="col-label-full">Средний</span>
+                    <span className="col-label-short">Ср.</span>
+                  </th>
+                  <th className="summary-col" title="Пропуски по уважительной причине">
+                    <span className="col-label-full">Уваж.</span>
+                    <span className="col-label-short">Ув.</span>
+                  </th>
+                  <th className="summary-col" title="Пропуски без уважительной причины">
+                    <span className="col-label-full">Неуваж.</span>
+                    <span className="col-label-short">Неув.</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
