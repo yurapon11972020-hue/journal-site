@@ -722,7 +722,7 @@ html[data-theme='light'] .login-card__submit {
   }
 }
 
-/* ---------------- Широкая таблица: листание и подсказки ---------------- */
+/* ---------------- Широкая таблица: прокрутка вбок ---------------- */
 .scroll-area {
   position: relative;
   /* Без этого обёртка внутри сетки растягивается по ширине таблицы,
@@ -733,51 +733,9 @@ html[data-theme='light'] .login-card__submit {
 
 .scroll-area__viewport {
   overflow-x: auto;
-}
-
-.scroll-area__controls {
-  display: none;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.scroll-area__hint {
-  margin-right: 2px;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.scroll-area__arrow {
-  width: 36px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: var(--panel);
-  color: var(--text);
-  font-size: 1.15rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.scroll-area__arrow:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent-strong);
-}
-
-.scroll-area__arrow:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-/* Показываем строку листания только когда таблица шире экрана. */
-.scroll-area--more-left .scroll-area__controls,
-.scroll-area--more-right .scroll-area__controls {
-  display: flex;
+  /* Свайп по таблице не должен утягивать всю страницу или уводить назад
+     по истории — в мини-приложении Telegram это особенно заметно. */
+  overscroll-behavior-x: contain;
 }
 
 /* Затемнение у края: видно, что таблица продолжается. */
@@ -813,17 +771,22 @@ html[data-theme='light'] .login-card__submit {
   }
 }
 
-/* Полное имя — на широком экране, сокращённое — на узком. */
-.student-name-short {
+/* Полное имя — на широком экране, сокращённое — на узком.
+   То же и для заголовков столбцов: длинное «Неуваж.» распирает столбец
+   и отнимает место у дат, которые как раз и нужно листать. */
+.student-name-short,
+.col-label-short {
   display: none;
 }
 
 @media (max-width: 900px) {
-  .student-name-full {
+  .student-name-full,
+  .col-label-full {
     display: none;
   }
 
-  .student-name-short {
+  .student-name-short,
+  .col-label-short {
     display: inline;
   }
 }
