@@ -32,3 +32,7 @@ services:
         value: "5"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      # Секрет вебхука: без него бот не отвечает, чтобы поддельные запросы
+      # не могли заставить его рассылать журнал. Только латиница, цифры, - и _.
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false

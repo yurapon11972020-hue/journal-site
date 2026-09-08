@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { basenameFromFilePath, filenameToGroupName, groupPathToPublicId } from '@/lib/group-files';
+import { assertJournalFile } from '@/lib/journal-file-check';
 import type { JournalFileResult, JournalGroupRef, JournalSource } from '@/lib/types';
 
 const PRIVATE_DOWNLOAD_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/resources/download';
@@ -844,6 +845,10 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
         'Проверь, что публичный доступ к файлу включён и ссылка не была пересоздана.',
     );
   });
+  // Проверяем файл до того, как он заменит прошлую копию: по ссылке может
+  // прийти страница входа вместо журнала, и она не должна затереть рабочие данные.
+  assertJournalFile(buffer, describePublicTarget(group));
+
   await fs.writeFile(tempFilePath, buffer);
   await fs.rename(tempFilePath, cachedFilePath);
 

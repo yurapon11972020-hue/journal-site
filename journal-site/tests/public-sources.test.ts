@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as XLSX from 'xlsx';
 
 import { getPublicSourcesInfo, listJournalFiles, loadJournalFile } from '@/lib/yandex-disk';
 
@@ -40,7 +41,21 @@ let cacheRoot = '';
 let downloads = 0;
 let listCalls = 0;
 let downloadFails = false;
+let downloadReturnsLoginPage = false;
 let apiIsDown = false;
+
+/** Настоящая книга Excel с меткой в A1 — по ней тест узнаёт, откуда файл. */
+function workbookFor(marker: string): Buffer {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([[marker]]), 'Лист1');
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+}
+
+function markerOf(buffer: Buffer): string {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  return String((sheet.A1 as { v?: unknown } | undefined)?.v ?? '');
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -73,8 +88,16 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
       downloadFails = false;
       return new Response('nope', { status: 503, statusText: 'Service Unavailable' });
     }
+    if (downloadReturnsLoginPage) {
+      // Яндекс отвечает 200, но отдаёт HTML вместо файла: доступ закрыли.
+      return new Response('<!DOCTYPE html><html><body>Вход</body></html>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    }
     downloads += 1;
-    return new Response(Buffer.from(`FILE::${target.searchParams.get('k')}::${target.searchParams.get('p')}`, 'utf8'));
+    const workbook = workbookFor(`${target.searchParams.get('k')}::${target.searchParams.get('p')}`);
+    return new Response(new Uint8Array(workbook));
   }
 
   throw new Error(`Неожиданный запрос в тесте: ${input}`);
@@ -115,6 +138,7 @@ beforeEach(async () => {
   downloads = 0;
   listCalls = 0;
   downloadFails = false;
+  downloadReturnsLoginPage = false;
   apiIsDown = false;
   resetRuntime();
 
@@ -209,8 +233,8 @@ describe('загрузка журнала группы', () => {
     const newYear = await loadJournalFile(byName.get('ИСиП-25-9')!.filePath);
     const lastYear = await loadJournalFile(byName.get('ИСиП-24-9')!.filePath);
 
-    expect(newYear.buffer.toString('utf8')).toContain(FILE_A);
-    expect(lastYear.buffer.toString('utf8')).toContain(FILE_B);
+    expect(markerOf(newYear.buffer)).toContain(FILE_A);
+    expect(markerOf(lastYear.buffer)).toContain(FILE_B);
     expect(newYear.sourceDetails).not.toBe(lastYear.sourceDetails);
   });
 
@@ -231,8 +255,8 @@ describe('загрузка журнала группы', () => {
     const legacy = await loadJournalFile('__yandex_public_cache__');
     const empty = await loadJournalFile();
 
-    expect(legacy.buffer.toString('utf8')).toContain(FILE_A);
-    expect(empty.buffer.toString('utf8')).toContain(FILE_A);
+    expect(markerOf(legacy.buffer)).toContain(FILE_A);
+    expect(markerOf(empty.buffer)).toContain(FILE_A);
   });
 
   it('при сбое скачивания отдаёт последнюю удачную копию', async () => {
@@ -245,7 +269,22 @@ describe('загрузка журнала группы', () => {
     downloadFails = true;
 
     const stale = await loadJournalFile(groups[0].filePath);
-    expect(stale.buffer.toString('utf8')).toContain(FILE_A);
+    expect(markerOf(stale.buffer)).toContain(FILE_A);
+  });
+
+  it('страница входа вместо журнала не затирает рабочую копию', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
+
+    const groups = await listJournalFiles();
+    const good = await loadJournalFile(groups[0].filePath);
+    expect(markerOf(good.buffer)).toContain(FILE_A);
+
+    await expireCachedCopy();
+    downloadReturnsLoginPage = true;
+
+    const still = await loadJournalFile(groups[0].filePath);
+    expect(markerOf(still.buffer)).toContain(FILE_A);
+    expect(still.buffer.subarray(0, 2).toString()).toBe('PK');
   });
 
   it('хранит не больше JOURNAL_CACHE_MAX_FILES копий на группу', async () => {

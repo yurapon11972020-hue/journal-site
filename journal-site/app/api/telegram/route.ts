@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
-import { answerCallback, editMessage, getWebhookSecret, sendMessage } from '@/lib/telegram';
+import { answerCallback, editMessage, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
 import {
   errorScreen,
   groupMenuScreen,
@@ -117,12 +117,17 @@ async function buildScreen(action: string): Promise<BotScreen> {
 }
 
 export async function POST(request: Request) {
+  // Секрет обязателен: без него любой, кто знает адрес сайта, может
+  // притвориться Телеграмом и заставить бота отправить журнал в чужой чат.
   const expectedSecret = getWebhookSecret();
-  if (expectedSecret) {
-    const receivedSecret = request.headers.get('x-telegram-bot-api-secret-token');
-    if (receivedSecret !== expectedSecret) {
-      return NextResponse.json({ ok: false }, { status: 401 });
-    }
+  if (!expectedSecret) {
+    console.error('[telegram] Не задан TELEGRAM_WEBHOOK_SECRET — бот не отвечает. Добавь переменную и открой /api/telegram/setup.');
+    return NextResponse.json({ ok: false }, { status: 503 });
+  }
+
+  const receivedSecret = request.headers.get('x-telegram-bot-api-secret-token');
+  if (!receivedSecret || !safeCompare(receivedSecret, expectedSecret)) {
+    return NextResponse.json({ ok: false }, { status: 401 });
   }
 
   let update: TelegramUpdate;

@@ -350,9 +350,11 @@ select {
   }
 
   .subject-table {
-    --num-width: 2.6rem;
-    --name-width: 11rem;
-    --summary-width: 3.5rem;
+    /* Узкие служебные колонки: чем меньше они занимают, тем больше
+       дат помещается на экран телефона и тем меньше нужно листать. */
+    --num-width: 2.1rem;
+    --name-width: 6.6rem;
+    --summary-width: 2.6rem;
     min-width: calc(var(--num-width) + var(--name-width) + (3 * var(--summary-width)) + (var(--lesson-count) * var(--lesson-width)));
     font-size: 0.8rem;
   }

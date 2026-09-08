@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useHorizontalScroll } from '@/lib/use-horizontal-scroll';
 
 export interface SubjectTabItem {
   id: string;
@@ -25,75 +25,12 @@ interface SubjectTabsProps {
  * и превращение вертикального колеса в горизонтальную прокрутку.
  */
 export default function SubjectTabs({ items, activeId, onSelect, label = 'Разделы журнала' }: SubjectTabsProps) {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const [moreLeft, setMoreLeft] = useState(false);
-  const [moreRight, setMoreRight] = useState(false);
-
-  const syncOverflow = useCallback(() => {
-    const track = trackRef.current;
-    if (!track) {
-      return;
-    }
-
-    const maxScroll = track.scrollWidth - track.clientWidth;
-    setMoreLeft(track.scrollLeft > 4);
-    setMoreRight(maxScroll - track.scrollLeft > 4);
-  }, []);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) {
-      return;
-    }
-
-    // ResizeObserver вызывает обработчик сам сразу после подписки,
-    // поэтому первое состояние считается без синхронного setState в эффекте.
-    const observer = new ResizeObserver(syncOverflow);
-    observer.observe(track);
-    track.addEventListener('scroll', syncOverflow, { passive: true });
-
-    return () => {
-      observer.disconnect();
-      track.removeEventListener('scroll', syncOverflow);
-    };
-  }, [syncOverflow]);
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) {
-      return;
-    }
-
-    const handleWheel = (event: WheelEvent) => {
-      if (track.scrollWidth <= track.clientWidth) {
-        return;
-      }
-      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
-        return;
-      }
-
-      track.scrollLeft += event.deltaY;
-      event.preventDefault();
-    };
-
-    track.addEventListener('wheel', handleWheel, { passive: false });
-    return () => track.removeEventListener('wheel', handleWheel);
-  }, []);
-
-  const scrollBy = (direction: -1 | 1) => {
-    const track = trackRef.current;
-    if (!track) {
-      return;
-    }
-
-    track.scrollBy({ left: direction * Math.max(track.clientWidth * 0.8, 160), behavior: 'smooth' });
-  };
+  const { ref: trackRef, moreLeft, moreRight, scrollByStep } = useHorizontalScroll();
 
   const selectTab = (id: string) => {
     onSelect(id);
 
-    const track = trackRef.current;
-    const target = track?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"]`);
+    const target = trackRef.current?.querySelector<HTMLElement>(`[data-tab-id="${CSS.escape(id)}"]`);
     target?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
   };
 
@@ -110,7 +47,7 @@ export default function SubjectTabs({ items, activeId, onSelect, label = 'Раз
       <button
         type="button"
         className="subject-tabs__arrow subject-tabs__arrow--left"
-        onClick={() => scrollBy(-1)}
+        onClick={() => scrollByStep(-1)}
         aria-label="Предыдущие разделы"
         tabIndex={moreLeft ? 0 : -1}
       >
@@ -136,7 +73,7 @@ export default function SubjectTabs({ items, activeId, onSelect, label = 'Раз
       <button
         type="button"
         className="subject-tabs__arrow subject-tabs__arrow--right"
-        onClick={() => scrollBy(1)}
+        onClick={() => scrollByStep(1)}
         aria-label="Следующие разделы"
         tabIndex={moreRight ? 0 : -1}
       >
