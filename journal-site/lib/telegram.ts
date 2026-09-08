@@ -98,6 +98,20 @@ export async function setWebhook(url: string): Promise<{ ok: boolean; descriptio
   };
 }
 
+/** Сравнение за одинаковое время: по скорости ответа секрет подобрать нельзя. */
+export function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let diff = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    diff |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  }
+
+  return diff === 0;
+}
+
 export function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

@@ -721,3 +721,109 @@ html[data-theme='light'] .login-card__submit {
     display: flex;
   }
 }
+
+/* ---------------- Широкая таблица: листание и подсказки ---------------- */
+.scroll-area {
+  position: relative;
+  /* Без этого обёртка внутри сетки растягивается по ширине таблицы,
+     и вбок уезжает вся страница вместо самой таблицы. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.scroll-area__viewport {
+  overflow-x: auto;
+}
+
+.scroll-area__controls {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.scroll-area__hint {
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.scroll-area__arrow {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scroll-area__arrow:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.scroll-area__arrow:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Показываем строку листания только когда таблица шире экрана. */
+.scroll-area--more-left .scroll-area__controls,
+.scroll-area--more-right .scroll-area__controls {
+  display: flex;
+}
+
+/* Затемнение у края: видно, что таблица продолжается. */
+.scroll-area--table::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 36px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  background: linear-gradient(270deg, var(--panel) 10%, transparent);
+  border-radius: 0 12px 12px 0;
+  z-index: 4;
+}
+
+.scroll-area--table.scroll-area--more-right::after {
+  opacity: 1;
+}
+
+/* Прокрутка «щёлкает» по колонкам занятий, а не останавливается посередине. */
+.subject-table .lesson-head,
+.subject-table .lesson-cell {
+  scroll-snap-align: start;
+}
+
+@media (max-width: 900px) {
+  .scroll-area--table .scroll-area__viewport {
+    scroll-snap-type: x proximity;
+    scroll-padding-left: calc(var(--num-width, 2.2rem) + var(--name-width, 6.6rem));
+  }
+}
+
+/* Полное имя — на широком экране, сокращённое — на узком. */
+.student-name-short {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .student-name-full {
+    display: none;
+  }
+
+  .student-name-short {
+    display: inline;
+  }
+}

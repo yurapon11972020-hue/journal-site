@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { CSSProperties, useMemo, useState } from 'react';
 
+import ScrollArea from '@/components/scroll-area';
 import SubjectTabs from '@/components/subject-tabs';
 import { classifyMarkValue, markToneToClass } from '@/lib/mark-classifier';
 import type { GradeEntry, JournalData, LessonTopic, ReportCard } from '@/lib/types';
@@ -57,6 +58,16 @@ interface SubjectAggregate {
   students: SubjectStudentRow[];
   columns: SubjectColumn[];
   lessonTopics: LessonTopic[];
+}
+
+/** «Иванов Иван Иванович» → «Иванов И. И.» — для узкого экрана. */
+function shortStudentName(fullName: string): string {
+  const parts = fullName.split(' ').filter(Boolean);
+  if (parts.length < 2) {
+    return fullName;
+  }
+
+  return `${parts[0]} ${parts.slice(1).map((part) => `${part[0]}.`).join(' ')}`;
 }
 
 function formatAverage(value: number | null): string {
@@ -563,7 +574,12 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
             </div>
           </div>
 
-          <div className="table-wrap table-wrap--subject">
+          <ScrollArea
+            className="scroll-area--table"
+            innerClassName="table-wrap table-wrap--subject"
+            prevLabel="Показать предыдущие занятия"
+            nextLabel="Показать следующие занятия"
+          >
             <table
               className={`journal-table subject-table ${getSubjectDensityClass(selectedSubject.columns.length)}`}
               style={{ ['--lesson-count' as const]: String(Math.max(selectedSubject.columns.length, 1)) } as CSSProperties}
@@ -604,7 +620,10 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                   return (
                     <tr key={`${selectedSubject.id}-${student.studentId}`}>
                       <td className="sticky-col sticky-col--num center-cell">{index + 1}</td>
-                      <td className="sticky-col sticky-col--name">{student.studentName}</td>
+                      <td className="sticky-col sticky-col--name">
+                        <span className="student-name-full">{student.studentName}</span>
+                        <span className="student-name-short">{shortStudentName(student.studentName)}</span>
+                      </td>
                       {selectedSubject.columns.map((column) => {
                         const grade = gradeMap.get(column.key);
                         return (
@@ -621,7 +640,7 @@ export default function Dashboard({ data, backHref, backLabel = 'Все груп
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollArea>
 
           {selectedSubject.lessonTopics.length ? (
             <section className="lesson-topics">
