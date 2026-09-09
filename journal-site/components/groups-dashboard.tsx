@@ -13,6 +13,14 @@ interface GroupsDashboardProps {
 // Начиная с этого количества групп показываем поиск по списку.
 const SEARCH_THRESHOLD = 8;
 
+// Три кадра в шапке. Чтобы поменять картинку, достаточно положить
+// свой файл в public/ и поправить путь здесь — больше нигде.
+const HERO_SHOTS = [
+  { src: '/art/cross.svg', alt: 'Хромированный крест', kind: 'art' },
+  { src: '/art/daggers.svg', alt: 'Скрещённые кинжалы', kind: 'art' },
+  { src: '/hero.jpg', alt: 'Ночной город зимой', kind: 'photo' },
+] as const;
+
 function normalize(value: string): string {
   return value.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
 }
@@ -49,42 +57,55 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
 
   return (
     <main className="page-shell">
-      <header className="hero">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/hero.jpg" alt="Зимний вид города" className="hero__img" />
-        <div className="hero__top">
-          <span className="hero__badge">❄️ Электронный журнал</span>
-          <div className="hero__actions">
-            <a
-              href="https://t.me/SKIBJOURNAL_BOT"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hero__btn"
-            >
-              ✈️ Бот
-            </a>
-            <button
-              type="button"
-              className="hero__btn"
-              onClick={toggleTheme}
-            >
-              {theme === 'dark' ? '☀️ Светлая' : '🌙 Тёмная'}
-            </button>
-          </div>
+      <header className="rig">
+        {/* Триптих: три кадра рядом. На телефоне лента листается вбок. */}
+        <div className="rig__strip">
+          {HERO_SHOTS.map((shot) => (
+            <figure className={`rig__cell rig__cell--${shot.kind}`} key={shot.src}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={shot.src} alt={shot.alt} />
+            </figure>
+          ))}
         </div>
-        <div className="hero__content">
-          <h1 className="hero__title">{groups.length === 1 ? 'Журнал группы' : 'Журналы групп'}</h1>
-          <p className="hero__subtitle">
-            Выбери группу — откроется журнал с оценками, пропусками и темами занятий.
-          </p>
+
+        <div className="rig__overlay">
+          <div className="rig__row">
+            <span className="rig__mark">Электронный журнал</span>
+            <div className="rig__actions">
+              <a
+                href="https://t.me/SKIBJOURNAL_BOT"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rig__btn"
+              >
+                Бот
+              </a>
+              <button type="button" className="rig__btn" onClick={toggleTheme}>
+                {theme === 'dark' ? 'Светлая' : 'Тёмная'}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            {/* Готическая латиница — только украшение. Ниже то же самое
+                словами, которые читаются без вопросов. */}
+            <p className="rig__wordmark chrome-text" aria-hidden="true">
+              Journal
+            </p>
+            <h1 className="rig__title">{groups.length === 1 ? 'Журнал группы' : 'Журналы групп'}</h1>
+            <p className="rig__sub">Выбери группу — оценки, пропуски и темы занятий внутри.</p>
+          </div>
         </div>
       </header>
 
-      <div className="groups-toolbar">
-        <span className="groups-count">
+      <div className="rule">
+        <span className="rule__label">
           {groups.length} {groupsWord(groups.length)}
         </span>
-        {showSearch ? (
+      </div>
+
+      {showSearch ? (
+        <div className="groups-toolbar">
           <input
             type="search"
             className="groups-search"
@@ -93,8 +114,8 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
             onChange={(event) => setQuery(event.target.value)}
             aria-label="Поиск группы"
           />
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {visibleGroups.length ? (
         <section className="tab-grid">
