@@ -1,0 +1,655 @@
+/* ============================================================
+   CHROME — тёмный «ювелирный» скин: хром, готика, зерно.
+   Подключается ПОСЛЕДНИМ и только перекрашивает. Вся логика
+   таблиц, прокрутки и вкладок живёт в globals.css / redesign.css.
+
+   Правило номер один: украшения не лезут в данные. Готический
+   шрифт — только на латинские надписи-акценты, оценки и фамилии
+   всегда набраны обычным гротеском.
+   ============================================================ */
+
+:root,
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #08080a;
+  --panel: #0f0f14;
+  --panel-alt: #15151b;
+  --border: #2b2b35;
+  --border-soft: #1d1d25;
+  --text: #edebf1;
+  --muted: #8b8896;
+  --accent: #d5d8e1;
+  --accent-strong: #ffffff;
+  --blood: #c8102e;
+  --ink: #050507;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+  --chrome: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #dfe2e9 22%,
+    #82868f 46%,
+    #4c4f57 52%,
+    #cfd3db 60%,
+    #ffffff 78%,
+    #9498a2 100%
+  );
+  --font-display: var(--font-oswald), 'Oswald', 'Arial Narrow', system-ui, sans-serif;
+  --font-gothic: var(--font-gothic-src), 'UnifrakturMaguntia', 'Times New Roman', serif;
+  --font-script: var(--font-script-src), 'Marck Script', cursive;
+  --font-body: var(--font-manrope), system-ui, -apple-system, sans-serif;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  /* Светлая тема — не «офисная белая», а костяная бумага:
+     тот же характер, просто вывернутый. */
+  --bg: #e7e3da;
+  --panel: #f6f3ec;
+  --panel-alt: #ece7dc;
+  --border: #c4bcaa;
+  --border-soft: #d8d1c2;
+  --text: #15141a;
+  --muted: #5d574c;
+  --accent: #232128;
+  --accent-strong: #000000;
+  --blood: #9d0f26;
+  --ink: #ffffff;
+  --shadow: 0 18px 44px rgba(40, 34, 24, 0.18);
+  --chrome: linear-gradient(
+    180deg,
+    #4a4d55 0%,
+    #9ba0aa 20%,
+    #2f3138 44%,
+    #14151a 52%,
+    #7d818b 62%,
+    #babec7 80%,
+    #3a3d45 100%
+  );
+}
+
+/* ---------------- Общий фон и зерно ---------------- */
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg);
+  /* Лёгкая крапчатость: без неё чёрный выглядит «пустым». */
+  background-image: radial-gradient(circle at 18% -10%, rgba(120, 124, 140, 0.11), transparent 55%),
+    radial-gradient(circle at 88% 4%, rgba(200, 16, 46, 0.07), transparent 45%);
+  background-attachment: fixed;
+}
+
+html[data-theme='light'] body {
+  background-image: radial-gradient(circle at 18% -10%, rgba(60, 55, 45, 0.08), transparent 55%),
+    radial-gradient(circle at 88% 4%, rgba(157, 15, 38, 0.06), transparent 45%);
+}
+
+/* ---------------- Хромированный текст ---------------- */
+
+.chrome-text {
+  background: var(--chrome);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* Запасной цвет, если background-clip не поддержан. */
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55));
+}
+
+@supports not ((-webkit-background-clip: text) or (background-clip: text)) {
+  .chrome-text {
+    color: var(--text);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+.gothic {
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.script {
+  font-family: var(--font-script);
+}
+
+/* ---------------- Шапка главной: триптих ---------------- */
+
+.rig {
+  position: relative;
+  margin-bottom: 26px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.rig__strip {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 2px;
+  background: var(--border-soft);
+  height: clamp(300px, 44vh, 470px);
+}
+
+.rig__cell {
+  position: relative;
+  margin: 0;
+  overflow: hidden;
+  background: var(--ink);
+  min-height: 160px;
+}
+
+.rig__cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: filter 0.4s ease, transform 0.6s ease;
+}
+
+/* Фотографии приводим к общему тону — иначе дневной кадр светит
+   рядом с чёрной графикой. Сама графика уже нарисована тёмной,
+   её затемнять нельзя: пропадёт хром. */
+.rig__cell--photo img {
+  filter: grayscale(0.55) contrast(1.15) brightness(0.66);
+}
+
+.rig__cell:hover img {
+  transform: scale(1.03);
+}
+
+.rig__cell--photo:hover img {
+  filter: grayscale(0) contrast(1.05) brightness(0.92);
+}
+
+.rig__cell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 5, 7, 0.1) 0%, rgba(5, 5, 7, 0.6) 100%);
+  pointer-events: none;
+}
+
+/* Надпись поверх триптиха */
+.rig__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 18px 22px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 5, 7, 0.55) 0%,
+    rgba(5, 5, 7, 0.12) 26%,
+    rgba(5, 5, 7, 0.78) 68%,
+    rgba(5, 5, 7, 0.94) 100%
+  );
+}
+
+.rig__overlay > * {
+  pointer-events: auto;
+}
+
+.rig__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rig__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(10, 10, 13, 0.55);
+  backdrop-filter: blur(10px);
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.rig__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rig__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 12px;
+  background: rgba(10, 10, 13, 0.55);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.rig__btn:hover {
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(20, 20, 26, 0.8);
+  transform: translateY(-1px);
+}
+
+.rig__wordmark {
+  margin: 0;
+  font-family: var(--font-gothic);
+  font-weight: 400;
+  font-size: clamp(2.9rem, 9vw, 6.4rem);
+  line-height: 0.92;
+  letter-spacing: 0.005em;
+}
+
+.rig__title {
+  margin: 6px 0 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1rem, 2.4vw, 1.5rem);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9);
+}
+
+.rig__sub {
+  margin: 10px 0 0;
+  max-width: 46ch;
+  font-family: var(--font-script);
+  font-size: clamp(1.05rem, 2.6vw, 1.4rem);
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
+}
+
+/* Разделитель-крестик между блоками */
+.rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 14px;
+  color: var(--muted);
+}
+
+.rule::before,
+.rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+.rule__label {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ---------------- Список групп ---------------- */
+
+.groups-count {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.groups-search {
+  border-radius: 12px;
+  border-color: var(--border);
+  background: var(--panel-alt);
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+}
+
+.tab-chip--link.group-card {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel-alt), var(--panel));
+  padding: 20px 44px 20px 24px;
+  min-height: 92px;
+  justify-content: center;
+}
+
+/* Хромированная полоса слева вместо плоской заливки */
+.tab-chip--link.group-card::before {
+  width: 3px;
+  background: var(--chrome);
+  opacity: 0.9;
+}
+
+.tab-chip--link.group-card::after {
+  content: '✝';
+  right: 20px;
+  font-size: 1.1rem;
+  color: var(--muted);
+  opacity: 0.45;
+  transform: translateY(-50%);
+}
+
+.tab-chip--link.group-card:hover {
+  border-color: var(--accent);
+}
+
+.tab-chip--link.group-card:hover::after {
+  opacity: 1;
+  color: var(--accent-strong);
+  transform: translateY(-50%);
+}
+
+.group-card__name {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.group-card__meta {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.groups-empty {
+  border-radius: 16px;
+  font-family: var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---------------- Страница группы ---------------- */
+
+.page-header .eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  color: var(--muted);
+}
+
+.page-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.back-link {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.theme-toggle,
+.hero__btn {
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 12px;
+}
+
+/* Карточки-показатели */
+.stat-card {
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-alt), var(--panel));
+}
+
+.stat-card::before {
+  background: var(--chrome);
+  opacity: 0.85;
+}
+
+.stat-card--good::before {
+  background: linear-gradient(180deg, #eafff2, #2f8f5b);
+}
+
+.stat-card--warning::before {
+  background: linear-gradient(180deg, #ffd9df, var(--blood));
+}
+
+.stat-card__label {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.stat-card__value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Вкладки предметов */
+.subject-tabs__track .tab-chip {
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-alt), var(--panel));
+  font-family: var(--font-display);
+  font-size: 0.94rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.subject-tabs__track .tab-chip--active {
+  border-color: var(--accent-strong);
+  background: var(--chrome);
+  color: #0a0a0c;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+html[data-theme='light'] .subject-tabs__track .tab-chip--active {
+  color: #f6f3ec;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+.subject-tabs__arrow {
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+/* Блок предмета */
+.sheet-card,
+.subject-section,
+.toolbar-row,
+.lesson-topic-card,
+.groups-empty,
+.stat-card {
+  border-color: var(--border);
+}
+
+.subject-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.subject-subtitle,
+.toolbar-note {
+  font-family: var(--font-display);
+  font-size: 0.76rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.lesson-topics__header {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.lesson-topic-card__date {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+/* ---------------- Таблица: сюда украшения не заходят ---------------- */
+
+/* Заголовок таблицы — единственное место с «характером»:
+   узкий гротеск капсом. Сами данные остаются обычным шрифтом. */
+.journal-table thead th {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--panel-alt);
+}
+
+.journal-table th,
+.journal-table td {
+  border-color: var(--border-soft);
+}
+
+/* Фамилии, оценки, пропуски — обычный шрифт, максимальный контраст. */
+.journal-table tbody td,
+.sticky-col--name,
+.mark {
+  font-family: var(--font-body);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sticky-col--name {
+  font-weight: 600;
+}
+
+.lesson-head__day {
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.lesson-head__month {
+  font-family: var(--font-body);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+/* Чётные строки чуть темнее — глазу легче вести строку. */
+.journal-table tbody tr:nth-child(even) td:not(.sticky-col) {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+html[data-theme='light'] .journal-table tbody tr:nth-child(even) td:not(.sticky-col) {
+  background: rgba(0, 0, 0, 0.022);
+}
+
+/* ---------------- Мелочи ---------------- */
+
+.login-card {
+  border-radius: 18px;
+}
+
+.login-card__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.login-card__submit {
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: var(--chrome);
+  color: #0a0a0c;
+  border-color: var(--accent-strong);
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline-color: var(--accent-strong);
+}
+
+/* ---------------- Телефон ---------------- */
+
+@media (max-width: 900px) {
+  .rig__strip {
+    /* Три кадра лентой: главный крупный, два сбоку подсматриваются. */
+    grid-template-columns: 78% 52% 52%;
+    grid-auto-flow: column;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .rig__strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rig__cell {
+    scroll-snap-align: start;
+  }
+
+  .rig__overlay {
+    /* На узком экране надпись не должна перекрывать кадры целиком. */
+    background: linear-gradient(180deg, rgba(5, 5, 7, 0.4) 0%, rgba(5, 5, 7, 0.9) 68%);
+    padding: 12px 14px 18px;
+  }
+
+  .rig__sub,
+  /* На телефоне значок дублирует заголовок ниже и занимает целую строку. */
+  .rig__mark {
+    display: none;
+  }
+
+  .rig__row {
+    justify-content: flex-end;
+  }
+
+  .tab-chip--link.group-card {
+    min-height: 76px;
+    padding: 16px 38px 16px 18px;
+  }
+
+  .group-card__name {
+    font-size: 1.1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rig__cell img,
+  .rig__btn {
+    transition: none;
+  }
+
+  .rig__cell:hover img {
+    transform: none;
+  }
+}

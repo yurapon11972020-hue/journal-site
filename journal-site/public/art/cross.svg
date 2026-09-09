@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" width="1200" height="820" role="img" aria-label="Готический крест">
+  <defs>
+    <linearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="26%"  stop-color="#d8dbe3"/>
+      <stop offset="44%"  stop-color="#7c808c"/>
+      <stop offset="50%"  stop-color="#4a4d57"/>
+      <stop offset="57%"  stop-color="#c9ccd5"/>
+      <stop offset="74%"  stop-color="#f2f4f8"/>
+      <stop offset="100%" stop-color="#8b8f9b"/>
+    </linearGradient>
+    <radialGradient id="vign" cx="0.5" cy="0.44" r="0.8">
+      <stop offset="0%"   stop-color="#25262d"/>
+      <stop offset="58%"  stop-color="#0d0d10"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" result="n"/>
+      <feColorMatrix in="n" type="saturate" values="0"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.15"/></feComponentTransfer>
+    </filter>
+    <pattern id="scan" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="4" fill="#000" opacity="0.28"/>
+    </pattern>
+    <path id="bar-v" d="M288 62 C288 150 348 176 348 250 L348 742 C348 820 288 848 288 936 L512 936 C512 848 452 820 452 742 L452 250 C452 176 512 150 512 62 Z"/>
+    <path id="bar-h" d="M62 286 C150 286 176 346 250 346 L550 346 C624 346 650 286 738 286 L738 452 C650 452 624 392 550 392 L250 392 C176 392 150 452 62 452 Z"/>
+    <g id="cross">
+      <use href="#bar-v"/>
+      <use href="#bar-h"/>
+    </g>
+  </defs>
+
+  <rect width="1200" height="820" fill="url(#vign)"/>
+
+  <!-- крест вписан в кадр с запасом, чтобы обрезка по краям его не резала -->
+  <g transform="translate(304 30) scale(0.76)">
+    <g transform="translate(-11 7)" opacity="0.5"><use href="#cross" fill="#c8102e"/></g>
+    <g transform="translate(10 -6)" opacity="0.38"><use href="#cross" fill="#2f6fd0"/></g>
+    <use href="#cross" fill="url(#chrome)"/>
+    <use href="#cross" fill="none" stroke="#f7f9ff" stroke-width="2.5" opacity="0.45"/>
+  </g>
+
+  <rect width="1200" height="820" fill="url(#scan)" opacity="0.45"/>
+  <rect x="0" y="352" width="1200" height="11" fill="#0b0b0e" opacity="0.8"/>
+  <rect x="0" y="548" width="1200" height="5"  fill="#0b0b0e" opacity="0.65"/>
+  <rect width="1200" height="820" filter="url(#grain)" opacity="0.9"/>
+</svg>
