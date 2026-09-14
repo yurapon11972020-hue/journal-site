@@ -27,11 +27,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 function readTheme(): Theme {
-  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
 function readServerTheme(): Theme {
-  return 'dark';
+  return 'light';
 }
 
 export function applyTheme(theme: Theme): void {
@@ -57,5 +57,8 @@ export function useTheme(): { theme: Theme; toggleTheme: () => void } {
 /**
  * Скрипт выставляет тему до первой отрисовки страницы.
  * Держим его строкой, чтобы вставить в <head> одним тегом.
+ *
+ * Свой выбор пользователя важнее всего; если его нет — берём настройку
+ * системы, а по умолчанию светлую: журнал читают днём и с проектора.
  */
-export const THEME_BOOTSTRAP_SCRIPT = `try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');document.documentElement.dataset.theme=(t==='light'||t==='dark')?t:'dark'}catch(e){document.documentElement.dataset.theme='dark'}`;
+export const THEME_BOOTSTRAP_SCRIPT = `try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='light'}`;
