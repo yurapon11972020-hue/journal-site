@@ -375,7 +375,6 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
       onSelect={(id) => setSection(id as SectionId)}
       crumbs={[{ label: groupName }, { label: sectionTitles[section] }]}
       identName={groupName}
-      identSub={`${stats.studentCount} ${pluralize(stats.studentCount, 'студент', 'студента', 'студентов')}`}
       mobileIds={['journal', 'topics']}
       back={backButton}
       wide
@@ -657,32 +656,44 @@ function StudentRow({
 
       {open ? (
         <div className="rowpanel">
-          <table className="dtable">
+          <table className="dtable dtable--report">
             <thead>
               <tr>
-                <th scope="col" className="num">№</th>
-                <th scope="col" className="wrap">Дисциплина</th>
-                <th scope="col" className="num">Сессия</th>
-                <th scope="col" className="num">Средний</th>
-                <th scope="col" className="num">Уваж.</th>
-                <th scope="col" className="num">Неуваж.</th>
+                <th scope="col" className="num rep-num">№</th>
+                <th scope="col" className="wrap rep-subject">Дисциплина</th>
+                <th scope="col" className="num rep-cell" title="Оценка за сессию">
+                  <span className="head-full">Сессия</span>
+                  <span className="head-short">Сес</span>
+                </th>
+                <th scope="col" className="num rep-cell" title="Средний балл">
+                  <span className="head-full">Средний</span>
+                  <span className="head-short">Ср</span>
+                </th>
+                <th scope="col" className="num rep-cell" title="Пропуски по уважительной причине">
+                  <span className="head-full">Уваж.</span>
+                  <span className="head-short">У</span>
+                </th>
+                <th scope="col" className="num rep-cell" title="Пропуски без уважительной причины">
+                  <span className="head-full">Неуваж.</span>
+                  <span className="head-short">Н</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {card.rows.map((row) => (
                 <tr key={`${card.studentId}-${row.index}-${row.subjectName}`}>
-                  <td className="num">{row.index}</td>
-                  <th scope="row" className="wrap" style={{ fontWeight: 450 }}>
+                  <td className="num rep-num">{row.index}</td>
+                  <th scope="row" className="wrap rep-subject" style={{ fontWeight: 450 }}>
                     {row.subjectName}
                   </th>
-                  <td className="num">{row.session ? <GradeBadge value={row.session} /> : '—'}</td>
-                  <td className="num">
+                  <td className="num rep-cell">{row.session ? <GradeBadge value={row.session} /> : '—'}</td>
+                  <td className="num rep-cell">
                     <GradeBadge value={row.averageLabel ?? row.average} />
                   </td>
-                  <td className="num">
+                  <td className="num rep-cell">
                     <ReportAbsence label={row.validAbsenceLabel} value={row.absences.valid} kind="valid" />
                   </td>
-                  <td className="num">
+                  <td className="num rep-cell">
                     <ReportAbsence label={row.invalidAbsenceLabel} value={row.absences.invalid} kind="invalid" />
                   </td>
                 </tr>

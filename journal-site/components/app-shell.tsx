@@ -33,7 +33,6 @@ interface AppShellProps {
   onSelect: (id: string) => void;
   crumbs: { label: string; href?: string }[];
   identName: string;
-  identSub?: string;
   /** Разделы в нижней панели на телефоне: основные + «Ещё». */
   mobileIds?: string[];
   /** Кнопка возврата к списку групп. Стоит слева в верхней панели. */
@@ -44,16 +43,6 @@ interface AppShellProps {
 
 const TELEGRAM_BOT_URL = 'https://t.me/SKIBJOURNAL_BOT';
 
-function initialsOf(value: string): string {
-  const parts = value.split(/[\s-]+/).filter(Boolean);
-  if (!parts.length) {
-    return '—';
-  }
-  return parts
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
-}
 
 // Дата считается только на клиенте: у сервера свой часовой пояс, и если
 // отрисовать её на обеих сторонах, React пожалуется на расхождение разметки.
@@ -69,7 +58,6 @@ export default function AppShell({
   onSelect,
   crumbs,
   identName,
-  identSub,
   mobileIds,
   back,
   children,
@@ -203,14 +191,9 @@ export default function AppShell({
 
           <div className="topbar__right">
             <span className="topbar__date">{dateLabel || ' '}</span>
+            {/* В правом верхнем углу — только название группы. */}
             <span className="topbar__ident">
-              <span className="avatar" aria-hidden>
-                {initialsOf(identName)}
-              </span>
-              <span className="topbar__ident-text">
-                <span className="topbar__ident-name">{identName}</span>
-                {identSub ? <span className="topbar__ident-sub">{identSub}</span> : null}
-              </span>
+              <span className="topbar__ident-name">{identName}</span>
             </span>
           </div>
         </header>
