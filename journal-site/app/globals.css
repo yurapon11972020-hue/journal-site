@@ -458,9 +458,17 @@ p {
   padding: 22px;
 }
 
-/* Страницы-таблицы занимают всю ширину, текстовые — ограничены. */
+/* Содержимое собрано в колонку по центру: на широком мониторе оно
+   не расползается от края до края. Журналу колонка шире — в неё
+   помещается больше дат. */
 .content--narrow > * {
   max-width: 1080px;
+  margin-inline: auto;
+}
+
+.content--wide > * {
+  max-width: 1320px;
+  margin-inline: auto;
 }
 
 /* ----- Нижняя навигация (телефон) ----- */
@@ -540,6 +548,14 @@ p {
 
 .card__body--flush {
   padding: 0;
+}
+
+/* Карточка по ширине содержимого и по центру колонки: узкая таблица
+   не должна прижиматься к левому краю и тянуть за собой пустое поле. */
+.card--fit {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
 }
 
 .btn {
@@ -952,32 +968,34 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
-.col-name {
+.dtable .col-name {
   left: 42px;
-  width: 220px;
-  min-width: 220px;
+  width: 260px;
+  min-width: 260px;
+  /* Правило .dtable th ставит nowrap и специфичнее простого .col-name,
+     поэтому перенос задаём с тем же весом селектора. */
   white-space: normal;
+  /* Фамилия вроде «Абдурахмонов» — одно длинное слово: без переноса
+     внутри слова оно вылезает из своей клетки прямо на оценки. */
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-weight: 550;
-}
-
-/* Пустой столбец в конце забирает лишнюю ширину, когда занятий мало:
-   иначе остаток делится между столбцами дат и они разъезжаются. */
-.col-filler {
-  width: auto;
-  min-width: 0;
-  padding: 0;
 }
 
 /* Журнал считается по заданным ширинам, а не по содержимому: только так
    столбец с датой остаётся одинаковым и при одном занятии, и при тридцати.
-   Минимальная ширина собирается из числа занятий — когда их много, таблица
-   выходит за экран и прокручивается, а не сжимает столбцы. */
+   Ширина собирается из числа занятий, поэтому таблица ровно такая, сколько
+   в ней данных: пустого поля справа не остаётся, а когда занятий много —
+   она выходит за экран и прокручивается, не сжимая столбцы. */
 .dtable--journal {
   table-layout: fixed;
   --w-idx: 42px;
-  --w-name: 220px;
+  --w-name: 260px;
   --w-date: 52px;
   --w-sum: 58px;
+  width: calc(
+    var(--w-idx) + var(--w-name) + (var(--cols, 1) * var(--w-date)) + (3 * var(--w-sum))
+  );
   min-width: calc(
     var(--w-idx) + var(--w-name) + (var(--cols, 1) * var(--w-date)) + (3 * var(--w-sum))
   );
@@ -1103,10 +1121,11 @@ p {
 .legend {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 14px;
   flex-wrap: wrap;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding: 0 4px;
   font-size: 12.5px;
   color: var(--text-2);
 }
@@ -1521,8 +1540,14 @@ code {
     display: none;
   }
 
-  /* В цепочке на телефоне оставляем только группу и текущий раздел. */
-  .topbar__crumbs > .topbar__crumbs:first-child {
+  /* В цепочке на телефоне остаётся только текущий раздел: к группам
+     ведёт кнопка со стрелкой, а разделитель без предыдущего звена
+     превращался в висячий слеш. */
+  .topbar__crumbs > .topbar__crumbs:not(:last-child) {
+    display: none;
+  }
+
+  .topbar__crumbs > .topbar__crumbs:last-child > .topbar__sep {
     display: none;
   }
 
@@ -1540,11 +1565,37 @@ code {
   }
 
   .metric {
-    padding: 11px 12px;
+    padding: 9px 11px;
+  }
+
+  .metric__label {
+    font-size: 11.5px;
   }
 
   .metric__value {
-    font-size: 20px;
+    margin-top: 3px;
+    font-size: 18px;
+  }
+
+  .metric__hint {
+    font-size: 11px;
+  }
+
+  /* Полоса среднего балла — украшение: на телефоне она отнимает место
+     у фамилии, а само число остаётся рядом. */
+  .bar {
+    display: none;
+  }
+
+  .rowitem {
+    gap: 9px;
+    padding: 10px 13px;
+  }
+
+  .rowitem__aside {
+    gap: 6px;
+    align-self: flex-start;
+    padding-top: 1px;
   }
 
   .content {
@@ -1742,5 +1793,102 @@ code {
   .pickshell__bar .btn span,
   .pickshell__brand .sidebar__brand-sub {
     display: none;
+  }
+}
+
+/* ---------------------------------------------------------------
+   9. Вкладки внутри раздела и кнопка возврата
+   --------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs__item {
+  position: relative;
+  padding: 9px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--t-fast), background var(--t-fast);
+}
+
+.tabs__item:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.tabs__item--active {
+  color: var(--primary);
+}
+
+/* Подчёркивание вместо заливки: раздел видно, но он не кричит. */
+.tabs__item--active::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--primary);
+}
+
+/* Кнопка возврата к списку групп. */
+.btn--back {
+  flex-shrink: 0;
+  padding-left: 9px;
+  padding-right: 11px;
+}
+
+/* Название предмета и его преподаватель — над таблицей. */
+.subjectbar {
+  margin-bottom: 12px;
+}
+
+.subjectbar__name {
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.subjectbar__teacher {
+  margin-top: 2px;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+@media (max-width: 720px) {
+  /* На телефоне у кнопки остаётся только стрелка — место дороже. */
+  .btn--back .btn__text {
+    display: none;
+  }
+
+  .btn--back {
+    width: 36px;
+    padding: 0;
+  }
+
+  .tabs__item {
+    padding: 9px 11px;
+    font-size: 13.5px;
+  }
+
+  .subjectbar__name {
+    font-size: 15.5px;
   }
 }
