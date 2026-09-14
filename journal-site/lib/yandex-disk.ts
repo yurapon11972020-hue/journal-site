@@ -552,12 +552,55 @@ function buildPublicParams(publicKey: string, publicPath?: string): URLSearchPar
   return params;
 }
 
+/**
+ * Почему Яндекс не рассказал про файл по ссылке. Копится в памяти процесса,
+ * чтобы /api/groups мог показать причину: иначе группа просто появляется
+ * с названием-хвостом ссылки, и понять, что не так, неоткуда.
+ *
+ * Хранится на globalThis, а не в переменной модуля: сборка Next.js может
+ * положить один и тот же модуль в разные бандлы, и тогда страница пишет
+ * в одну копию Map, а обработчик /api/groups читает другую — пустую.
+ */
+const META_PROBLEMS_KEY = Symbol.for('journal.yandex.metaProblems');
+
+function getMetaProblems(): Map<string, string> {
+  const store = globalThis as typeof globalThis & { [META_PROBLEMS_KEY]?: Map<string, string> };
+  store[META_PROBLEMS_KEY] ??= new Map<string, string>();
+  return store[META_PROBLEMS_KEY];
+}
+
+export function getPublicMetaProblems(): { link: string; reason: string }[] {
+  return [...getMetaProblems().entries()].map(([link, reason]) => ({ link, reason }));
+}
+
+function explainMetaFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (/\b404\b/.test(message)) {
+    return 'Яндекс не нашёл файл по этой ссылке. Проверь, что ссылка не устарела и файл не удалён.';
+  }
+  if (/\b(401|403)\b/.test(message)) {
+    return 'Яндекс закрыл доступ по этой ссылке. Включи у файла доступ по ссылке для всех, у кого есть ссылка.';
+  }
+  if (/\b429\b/.test(message)) {
+    return 'Яндекс временно ограничил число запросов. Обычно проходит само за несколько минут.';
+  }
+  return message;
+}
+
 async function readPublicResourceMeta(publicKey: string, publicPath?: string, limit = 200): Promise<PublicResourceMeta | null> {
+  const where = describePublicTarget({ publicKey, publicPath });
+
   try {
     const params = buildPublicParams(publicKey, publicPath);
     params.set('limit', String(limit));
-    return await fetchJson<PublicResourceMeta>(`${PUBLIC_RESOURCE_ENDPOINT}?${params.toString()}`);
-  } catch {
+    const meta = await fetchJson<PublicResourceMeta>(`${PUBLIC_RESOURCE_ENDPOINT}?${params.toString()}`);
+    getMetaProblems().delete(where);
+    return meta;
+  } catch (error) {
+    const reason = explainMetaFailure(error);
+    getMetaProblems().set(where, reason);
+    console.error(`[yandex] Не удалось прочитать данные о файле ${where}: ${reason}`);
     return null;
   }
 }

@@ -15,7 +15,7 @@ while ($true) {
 }
 
 if ($links.Count -eq 0) {
-  $links = @("https://disk.yandex.ru/i/jr0lr00cUQp0FQ", "https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg", "https://disk.yandex.ru/i/ezTOIqg1oAictA", "https://disk.yandex.ru/i/n2Ldf1ar5jbjJg")
+  $links = @("https://disk.yandex.ru/i/jr0lr00cUQp0FQ", "https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg", "https://disk.yandex.ru/i/ezTOIqg1oAictA", "https://disk.yandex.ru/i/n2Ldf1ar5jbjJg", "https://disk.yandex.ru/i/WtnnnWnxsUUoZw", "https://disk.yandex.ru/i/kORWvg2JaCqGQw")
   Write-Host "Ссылки не введены, беру ссылки журналов по умолчанию." -ForegroundColor Yellow
 }
 
