@@ -868,25 +868,6 @@ p {
   max-height: calc(100vh - 210px);
 }
 
-/* Подсказка у правого края, что таблица продолжается. */
-.tablebox::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 28px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--t);
-  background: linear-gradient(270deg, var(--surface), transparent);
-  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
-}
-
-.tablebox--more::after {
-  opacity: 1;
-}
-
 .dtable {
   width: 100%;
   border-collapse: separate;
@@ -974,44 +955,91 @@ p {
   font-weight: 550;
 }
 
-/* Журнал считается по заданным ширинам, а не по содержимому: только так
-   столбец с датой остаётся одинаковым и при одном занятии, и при тридцати.
-   Таблица тянется на всю ширину, но лишнее место достаётся столбцу с
-   фамилиями, а не датам. Минимальная ширина собрана из числа занятий:
-   когда их много, таблица выходит за экран и прокручивается, а столбцы
-   не сжимаются. */
+/* Журнал считается по заданным ширинам, а не по содержимому.
+   Две задачи сразу:
+
+   1. Клетка занятия никогда не шире базовой — лишнее место не уходит
+      ни в неё, ни в столбец с фамилиями, а достаётся продолжению сетки
+      справа, чтобы строка выглядела как разлинованный лист.
+   2. Когда занятий много, клетки сжимаются, и таблица всё равно влезает
+      в экран: листать её вбок не нужно ни на компьютере, ни на телефоне.
+      Мелкие клетки читаются щипком-увеличением. */
 .dtable--journal {
   table-layout: fixed;
+  width: 100%;
+  min-width: 0;
   --w-idx: 42px;
   --w-name: 260px;
-  --w-date: 52px;
+  --w-date-base: 52px;
   --w-sum: 58px;
-  width: 100%;
-  min-width: calc(
-    var(--w-idx) + var(--w-name) + (var(--cols, 1) * var(--w-date)) + (3 * var(--w-sum))
-  );
+  /* Значение по умолчанию; точную ширину подставляет JournalTable,
+     потому что проценты внутри min()/calc() в ячейке таблицы Chromium
+     отбрасывает и столбец молча уезжает в auto. */
+  --w-date: var(--w-date-base);
 }
 
 .dtable--journal .col-idx {
   width: var(--w-idx);
-  min-width: var(--w-idx);
+  min-width: 0;
 }
 
 .dtable--journal .col-name {
   left: var(--w-idx);
-  /* auto в фиксированной раскладке = «забери весь остаток строки». */
-  width: auto;
-  min-width: var(--w-name);
+  width: var(--w-name);
+  min-width: 0;
 }
 
 .dtable--journal .col-date {
   width: var(--w-date);
-  min-width: var(--w-date);
+  min-width: 0;
+  /* Разделитель у каждой клетки: без него узкие столбцы сливаются
+     в сплошную полосу и сетку не видно. */
+  border-left: 1px solid var(--border);
+}
+
+.dtable--journal .col-sum--first {
+  border-left: 1px solid var(--border-strong);
+}
+
+/* Оценка ужимается вместе со своей клеткой: в узких столбцах плашка
+   со своей минимальной шириной вылезала за клетку и растягивала таблицу. */
+.dtable--journal .col-date .grade,
+.dtable--journal .col-sum .grade {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 2px;
+}
+
+.dtable--journal .col-date,
+.dtable--journal .col-sum {
+  padding-left: 2px;
+  padding-right: 2px;
+  overflow: hidden;
+}
+
+/* Продолжение сетки: пустой столбец, разлинованный тем же шагом,
+   что и клетки занятий. Когда занятий много, он схлопывается в ноль. */
+.dtable--journal .col-grid {
+  border-left: 1px solid var(--border);
+  width: auto;
+  min-width: 0;
+  padding: 0;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(var(--w-date-base) - 1px),
+    var(--border) calc(var(--w-date-base) - 1px),
+    var(--border) var(--w-date-base)
+  );
+}
+
+.dtable--journal thead .col-grid {
+  background-color: var(--surface-2);
 }
 
 .dtable--journal .col-sum {
   width: var(--w-sum);
-  min-width: var(--w-sum);
+  min-width: 0;
 }
 
 /* Граница-тень справа от закреплённой части. */
@@ -1626,16 +1654,13 @@ code {
   }
 
   .dtable--journal {
-    --w-idx: 30px;
-    --w-name: 118px;
-    --w-date: 44px;
-    --w-sum: 42px;
+    --w-idx: 26px;
+    --w-name: 104px;
+    --w-date-base: 40px;
+    --w-sum: 34px;
   }
 
-  .dtable--journal .col-sum {
-    padding-left: 3px;
-    padding-right: 3px;
-  }
+
 
   .name-full {
     display: none;
@@ -1693,7 +1718,10 @@ code {
   }
 
   .dtable--journal {
-    --w-name: 100px;
+    --w-idx: 22px;
+    --w-name: 88px;
+    --w-date-base: 34px;
+    --w-sum: 30px;
   }
 
   .mobilenav__item {
@@ -1908,5 +1936,42 @@ code {
 
   .subjectbar__name {
     font-size: 15.5px;
+  }
+}
+
+/* Тесная таблица: клетки настолько узкие, что подписи в них уже не
+   помещаются. Оставляем только число дня и цифру оценки. */
+.dtable--journal--tight .datehead__month,
+.dtable--journal--tight .datehead__mark {
+  display: none;
+}
+
+.dtable--journal--tight .datehead__day {
+  font-size: 11px;
+}
+
+.dtable--journal--tight .col-date .grade {
+  padding: 0;
+  font-size: 11px;
+}
+
+.dtable--journal--tight .col-date,
+.dtable--journal--tight .col-sum {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Короткие заголовки столбцов там, где длинные не влезают. */
+.head-short {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .head-full {
+    display: none;
+  }
+
+  .head-short {
+    display: inline;
   }
 }

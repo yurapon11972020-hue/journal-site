@@ -1,10 +1,58 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 
 import { AbsenceBadge, GradeBadge } from '@/components/ui';
-import { useHorizontalScroll } from '@/lib/use-horizontal-scroll';
 import type { GradeEntry } from '@/lib/types';
+
+/** Ниже этого клетка превращается в полоску — дальше ужимать нет смысла. */
+const MIN_DATE_WIDTH = 6;
+
+/** Уже этого в клетку не влезают ни месяц, ни плашка с отступами. */
+const TIGHT_DATE_WIDTH = 30;
+
+/**
+ * Подбирает ширину клетки занятия так, чтобы таблица всегда помещалась
+ * в свою колонку и её не приходилось листать вбок.
+ *
+ * Клетка не шире базовой: когда занятий мало, лишнее место уходит не в неё
+ * и не в фамилии, а в разлинованный «хвост» справа. Когда занятий много,
+ * клетки сжимаются — мелкое читается щипком-увеличением.
+ *
+ * Считается в коде, а не в CSS: проценты внутри min()/calc() в ширине
+ * ячейки таблицы Chromium отбрасывает, и столбец молча уезжает в auto.
+ */
+function useFittedColumns(
+  tableRef: React.RefObject<HTMLTableElement | null>,
+  boxRef: React.RefObject<HTMLDivElement | null>,
+  columnCount: number,
+): void {
+  useEffect(() => {
+    const table = tableRef.current;
+    const box = boxRef.current;
+    if (!table || !box) {
+      return;
+    }
+
+    const apply = () => {
+      const styles = getComputedStyle(table);
+      const px = (name: string) => Number.parseFloat(styles.getPropertyValue(name)) || 0;
+      const base = px('--w-date-base');
+      const free = box.clientWidth - px('--w-idx') - px('--w-name') - 3 * px('--w-sum');
+      const perColumn = columnCount > 0 ? Math.floor(free / columnCount) : base;
+
+      const width = Math.max(MIN_DATE_WIDTH, Math.min(base, perColumn));
+      table.style.setProperty('--w-date', `${width}px`);
+      table.classList.toggle('dtable--journal--tight', width < TIGHT_DATE_WIDTH);
+    };
+
+    // ResizeObserver зовёт обработчик сразу после подписки, поэтому
+    // первое значение считается без отдельного вызова в теле эффекта.
+    const observer = new ResizeObserver(apply);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [tableRef, boxRef, columnCount]);
+}
 
 export interface JournalColumn {
   key: string;
@@ -38,12 +86,16 @@ export default function JournalTable({
   rows: JournalRow[];
   caption: string;
 }) {
-  const { ref, moreRight } = useHorizontalScroll();
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
+
+  useFittedColumns(tableRef, boxRef, columns.length);
 
   return (
-    <div className={`tablebox${moreRight ? ' tablebox--more' : ''}`}>
-      <div className="tablebox__scroll" ref={ref}>
+    <div className="tablebox">
+      <div className="tablebox__scroll" ref={boxRef}>
         <table
+          ref={tableRef}
           className="dtable dtable--journal"
           style={{ ['--cols' as string]: String(Math.max(columns.length, 1)) } as CSSProperties}
         >
@@ -54,7 +106,8 @@ export default function JournalTable({
                 №
               </th>
               <th scope="col" className="stick col-name">
-                Обучающийся
+                <span className="head-full">Обучающийся</span>
+                <span className="head-short">Студент</span>
               </th>
               {columns.map((column) => (
                 <th scope="col" className="col-date" key={column.key}>
@@ -67,14 +120,19 @@ export default function JournalTable({
                   </span>
                 </th>
               ))}
+              {/* Пустой столбец продолжает разлиновку до края таблицы. */}
+              <th className="col-grid" aria-hidden />
               <th scope="col" className="col-sum col-sum--first" title="Средний балл">
-                Ср.
+                <span className="head-full">Ср.</span>
+                <span className="head-short">Ср</span>
               </th>
               <th scope="col" className="col-sum" title="Пропуски по уважительной причине">
-                Ув.
+                <span className="head-full">Ув.</span>
+                <span className="head-short">У</span>
               </th>
               <th scope="col" className="col-sum" title="Пропуски без уважительной причины">
-                Неув.
+                <span className="head-full">Неув.</span>
+                <span className="head-short">Н</span>
               </th>
             </tr>
           </thead>
@@ -98,6 +156,7 @@ export default function JournalTable({
                     </td>
                   );
                 })}
+                <td className="col-grid" />
                 <td className="col-sum col-sum--first">
                   <GradeBadge value={row.average} />
                 </td>

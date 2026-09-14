@@ -254,30 +254,6 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
   }, [data]);
 
   /** Сводка по предмету: средний балл и пропуски по всей группе. */
-  const subjectSummaries = useMemo(
-    () =>
-      subjects.map((subject) => {
-        const valid = subject.students.reduce((sum, student) => sum + student.absences.valid, 0);
-        const invalid = subject.students.reduce((sum, student) => sum + student.absences.invalid, 0);
-        const gradeCount = subject.students.reduce(
-          (sum, student) => sum + student.grades.filter((grade) => grade.value.trim()).length,
-          0,
-        );
-
-        return {
-          id: subject.id,
-          name: subject.subjectName,
-          teacherName: subject.teacherName,
-          average: averageOf(subject.students.map((student) => student.average)),
-          lessonCount: subject.columns.length,
-          topicCount: subject.lessonTopics.length,
-          gradeCount,
-          valid,
-          invalid,
-        };
-      }),
-    [subjects],
-  );
 
   const selectedSubject = subjects.find((subject) => subject.id === subjectId) ?? subjects[0] ?? null;
 
@@ -348,26 +324,6 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
     }
   }, [data.reportCards, studentSearch, studentSort]);
 
-  const attendanceRows = useMemo(
-    () =>
-      [...data.students]
-        .map((student) => ({
-          id: student.id,
-          name: student.name,
-          valid: student.totalAbsences.valid,
-          invalid: student.totalAbsences.invalid,
-          total: student.totalAbsences.valid + student.totalAbsences.invalid,
-          bySubject: student.subjects
-            .filter((subject) => subject.absences.valid + subject.absences.invalid > 0)
-            .map((subject) => ({
-              name: subject.subjectName,
-              valid: subject.absences.valid,
-              invalid: subject.absences.invalid,
-            })),
-        }))
-        .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, 'ru')),
-    [data.students],
-  );
 
   const subjectsWithTopics = useMemo(
     () => subjects.filter((subject) => subject.lessonTopics.length > 0),
