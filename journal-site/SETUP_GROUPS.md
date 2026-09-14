@@ -33,7 +33,7 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 
    | Key | Value |
    |---|---|
-   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg` |
+   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw` |
 
 4. **Старую переменную `YANDEX_DISK_PUBLIC_URL` (без `S` на конце) удали** — кнопка с корзиной справа от строки.
    Если её оставить, ничего не сломается: она просто игнорируется, пока задана `YANDEX_DISK_PUBLIC_URLS`. Но чтобы потом не путаться, лучше удалить.
@@ -52,7 +52,8 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```json
 {
-  "count": 3,
+  "count": 6,
+  "problems": [],
   "groups": [
     { "groupName": "ИСиП-25-9", "url": "/group/..." },
     { "groupName": "ИСиП-24-9", "url": "/group/..." },
@@ -61,10 +62,13 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 }
 ```
 
+Пустой `problems` означает, что Яндекс ответил про все ссылки.
+Если там что-то есть — рядом с проблемной ссылкой написано, что именно не так.
+
 В поле `configured` видно, из какой переменной сервер взял ссылки и сколько их там —
 если `variable` показывает `YANDEX_DISK_PUBLIC_URL`, значит новую переменную сервер не увидел.
 
-`count` — сколько групп увидел сайт. Сейчас в переменной три ссылки, значит должно быть `"count": 3`.
+`count` — сколько групп увидел сайт. Сейчас в переменной шесть ссылок, значит должно быть `"count": 6`.
 Названия групп берутся из имён файлов на Яндекс.Диске — если они выглядят не так, как хочется,
 задай их сам: `ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА, ИСиП-24/9 = https://disk.yandex.ru/i/ССЫЛКА`.
 
@@ -78,7 +82,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 2. Допиши ссылку через запятую:
 
    ```env
-   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
+   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, https://disk.yandex.ru/i/WtnnnWnxsUUoZw, https://disk.yandex.ru/i/kORWvg2JaCqGQw, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
    ```
 
 3. **Save Changes** → дождись **Live** → проверь `/api/groups`.
@@ -146,7 +150,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 | «Сайт запустился, но не смог прочитать группы» | Не задана `YANDEX_DISK_PUBLIC_URLS` либо в ней опечатка. Проверь строку в Render → Environment. |
 | `/api/groups` возвращает `count: 0` | Ссылка ведёт на пустую папку или на файл не-Excel. Открой ссылку в браузере и проверь, что видно нужный файл. |
 | Групп меньше, чем ссылок в списке | Посмотри поле `configured` в ответе `/api/groups`: там написано, из какой переменной сервер взял ссылки и сколько их. Если `linkCount` меньше числа твоих ссылок — проверь разделители: между ссылками должна быть запятая, точка с запятой или перенос строки. |
-| Название группы выглядит как хвост ссылки (`jr0lr00cUQp0FQ`) | Яндекс не ответил на запрос об этом файле — так сайт показывает, какая именно ссылка не открывается. Причина будет в тексте ошибки на странице группы. |
+| Название группы выглядит как хвост ссылки (`jr0lr00cUQp0FQ`) | Яндекс не ответил на запрос об этом файле — так сайт показывает, какая именно ссылка не открывается. Открой `/api/groups`: в разделе `problems` будет написано, что именно не так с этой ссылкой (закрыт доступ, файл не найден, слишком много запросов). Чаще всего у файла нужно включить доступ по ссылке для всех, у кого есть ссылка. |
 | Ошибка `Ошибка Yandex Disk API: 404` | Публичный доступ выключен или ссылка пересоздана. В самом тексте ошибки написано, какая ссылка не открылась и из какой переменной она взята. Открой доступ заново или впиши актуальную ссылку. |
 | Группа открывается, но студентов нет | Изменилась структура листов Excel. Сравни файл с журналом, который работал раньше. |
 | Появились две одинаковые группы | В `YANDEX_DISK_PUBLIC_URLS` одна и та же ссылка записана дважды, либо ссылка на файл продублирована ссылкой на папку с этим же файлом. |
@@ -183,7 +187,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache

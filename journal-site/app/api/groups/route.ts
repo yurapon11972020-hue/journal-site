@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getJournalGroups } from '@/lib/journal';
-import { getPublicSourcesInfo } from '@/lib/yandex-disk';
+import { getPublicMetaProblems, getPublicSourcesInfo } from '@/lib/yandex-disk';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,6 +15,9 @@ export async function GET() {
       // Из какой переменной окружения сервер взял ссылки и сколько их там.
       // Помогает сразу понять, почему групп меньше, чем ожидалось.
       configured: getPublicSourcesInfo(),
+      // Ссылки, про которые Яндекс не ответил. Группа по такой ссылке всё равно
+      // появится, но назовётся хвостом ссылки — здесь написано, почему.
+      problems: getPublicMetaProblems(),
       groups: groups.map((group) => ({
         id: group.id,
         groupName: group.groupName,
