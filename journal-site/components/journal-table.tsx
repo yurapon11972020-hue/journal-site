@@ -1,58 +1,9 @@
 'use client';
 
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import { AbsenceBadge, GradeBadge } from '@/components/ui';
 import type { GradeEntry } from '@/lib/types';
-
-/** Ниже этого клетка превращается в полоску — дальше ужимать нет смысла. */
-const MIN_DATE_WIDTH = 6;
-
-/** Уже этого в клетку не влезают ни месяц, ни плашка с отступами. */
-const TIGHT_DATE_WIDTH = 30;
-
-/**
- * Подбирает ширину клетки занятия так, чтобы таблица всегда помещалась
- * в свою колонку и её не приходилось листать вбок.
- *
- * Клетка не шире базовой: когда занятий мало, лишнее место уходит не в неё
- * и не в фамилии, а в разлинованный «хвост» справа. Когда занятий много,
- * клетки сжимаются — мелкое читается щипком-увеличением.
- *
- * Считается в коде, а не в CSS: проценты внутри min()/calc() в ширине
- * ячейки таблицы Chromium отбрасывает, и столбец молча уезжает в auto.
- */
-function useFittedColumns(
-  tableRef: React.RefObject<HTMLTableElement | null>,
-  boxRef: React.RefObject<HTMLDivElement | null>,
-  columnCount: number,
-): void {
-  useEffect(() => {
-    const table = tableRef.current;
-    const box = boxRef.current;
-    if (!table || !box) {
-      return;
-    }
-
-    const apply = () => {
-      const styles = getComputedStyle(table);
-      const px = (name: string) => Number.parseFloat(styles.getPropertyValue(name)) || 0;
-      const base = px('--w-date-base');
-      const free = box.clientWidth - px('--w-idx') - px('--w-name') - 3 * px('--w-sum');
-      const perColumn = columnCount > 0 ? Math.floor(free / columnCount) : base;
-
-      const width = Math.max(MIN_DATE_WIDTH, Math.min(base, perColumn));
-      table.style.setProperty('--w-date', `${width}px`);
-      table.classList.toggle('dtable--journal--tight', width < TIGHT_DATE_WIDTH);
-    };
-
-    // ResizeObserver зовёт обработчик сразу после подписки, поэтому
-    // первое значение считается без отдельного вызова в теле эффекта.
-    const observer = new ResizeObserver(apply);
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, [tableRef, boxRef, columnCount]);
-}
 
 export interface JournalColumn {
   key: string;
@@ -71,11 +22,77 @@ export interface JournalRow {
   gradeByColumn: Map<string, GradeEntry>;
 }
 
+/** Больше пустых клеток рисовать незачем — строка и так уходит за экран. */
+const MAX_BLANK_COLUMNS = 40;
+
+interface Layout {
+  /** Сколько пустых клеток дорисовать справа до края. */
+  blanks: number;
+  /** Во сколько раз уменьшить таблицу, чтобы она поместилась целиком. */
+  zoom: number;
+  /** Точная ширина таблицы в пикселях; null — пока не измерили. */
+  width: number | null;
+}
+
+/**
+ * Подгоняет таблицу под ширину колонки.
+ *
+ * Ничего не растягивается: фамилии и клетки занятий всегда своей ширины.
+ * Если места больше, чем нужно, справа дорисовываются пустые клетки —
+ * те, куда со временем встанут оценки. Если места меньше, таблица не
+ * сжимается по столбцам, а уменьшается целиком: пропорции сохраняются,
+ * таблица видна полностью, а разглядеть её можно щипком-увеличением.
+ */
+function useJournalLayout(
+  tableRef: React.RefObject<HTMLTableElement | null>,
+  boxRef: React.RefObject<HTMLDivElement | null>,
+  columnCount: number,
+): Layout {
+  const [layout, setLayout] = useState<Layout>({ blanks: 0, zoom: 1, width: null });
+
+  useEffect(() => {
+    const table = tableRef.current;
+    const box = boxRef.current;
+    if (!table || !box) {
+      return;
+    }
+
+    const measure = () => {
+      const styles = getComputedStyle(table);
+      const px = (name: string) => Number.parseFloat(styles.getPropertyValue(name)) || 0;
+      const dateWidth = px('--w-date');
+      if (!dateWidth) {
+        return;
+      }
+
+      const fixed = px('--w-idx') + px('--w-name') + 3 * px('--w-sum');
+      const natural = fixed + columnCount * dateWidth;
+      const available = box.clientWidth;
+
+      if (natural > available) {
+        setLayout({ blanks: 0, zoom: available / natural, width: natural });
+        return;
+      }
+
+      const blanks = Math.min(MAX_BLANK_COLUMNS, Math.floor((available - natural) / dateWidth));
+      setLayout({ blanks, zoom: 1, width: natural + blanks * dateWidth });
+    };
+
+    // ResizeObserver зовёт обработчик сразу после подписки, поэтому первое
+    // измерение делается без отдельного вызова в теле эффекта.
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [tableRef, boxRef, columnCount]);
+
+  return layout;
+}
+
 /**
  * Основная таблица журнала: студенты по строкам, даты занятий по столбцам.
  *
- * Шапка и первые два столбца закреплены, поэтому при прокрутке вбок видно,
- * чья это строка, а при прокрутке вниз — какое это число.
+ * Шапка и первые два столбца закреплены, поэтому видно, чья это строка
+ * и какое это число.
  */
 export default function JournalTable({
   columns,
@@ -88,16 +105,23 @@ export default function JournalTable({
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
+  const { blanks, zoom, width } = useJournalLayout(tableRef, boxRef, columns.length);
 
-  useFittedColumns(tableRef, boxRef, columns.length);
+  const blankKeys = Array.from({ length: blanks }, (_, index) => `blank-${index}`);
 
   return (
     <div className="tablebox">
       <div className="tablebox__scroll" ref={boxRef}>
+        {/* Ширина задаётся явно: при width:auto браузер игнорирует
+            table-layout:fixed, уходит в автоподбор — и столбец с фамилиями
+            снова растягивается по самой длинной из них.
+
+            Уменьшаем через zoom, а не transform: zoom сокращает и занимаемую
+            высоту, поэтому под таблицей не остаётся пустого места. */}
         <table
           ref={tableRef}
           className="dtable dtable--journal"
-          style={{ ['--cols' as string]: String(Math.max(columns.length, 1)) } as CSSProperties}
+          style={{ zoom, width: width ?? undefined } as CSSProperties}
         >
           <caption className="sr-only">{caption}</caption>
           <thead>
@@ -120,8 +144,9 @@ export default function JournalTable({
                   </span>
                 </th>
               ))}
-              {/* Пустой столбец продолжает разлиновку до края таблицы. */}
-              <th className="col-grid" aria-hidden />
+              {blankKeys.map((key) => (
+                <th className="col-date col-date--blank" key={key} aria-hidden />
+              ))}
               <th scope="col" className="col-sum col-sum--first" title="Средний балл">
                 <span className="head-full">Ср.</span>
                 <span className="head-short">Ср</span>
@@ -156,7 +181,9 @@ export default function JournalTable({
                     </td>
                   );
                 })}
-                <td className="col-grid" />
+                {blankKeys.map((key) => (
+                  <td className="col-date col-date--blank" key={`${row.studentId}-${key}`} />
+                ))}
                 <td className="col-sum col-sum--first">
                   <GradeBadge value={row.average} />
                 </td>
