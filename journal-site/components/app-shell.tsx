@@ -34,8 +34,10 @@ interface AppShellProps {
   crumbs: { label: string; href?: string }[];
   identName: string;
   identSub?: string;
-  /** Разделы в нижней панели на телефоне: 3 основных + «Ещё». */
+  /** Разделы в нижней панели на телефоне: основные + «Ещё». */
   mobileIds?: string[];
+  /** Кнопка возврата к списку групп. Стоит слева в верхней панели. */
+  back?: ReactNode;
   children: ReactNode;
   wide?: boolean;
 }
@@ -69,6 +71,7 @@ export default function AppShell({
   identName,
   identSub,
   mobileIds,
+  back,
   children,
   wide = false,
 }: AppShellProps) {
@@ -172,6 +175,8 @@ export default function AppShell({
             {drawerOpen ? <IconClose /> : <IconMenu />}
           </button>
 
+          {back}
+
           <nav className="topbar__crumbs" aria-label="Навигационная цепочка">
             {crumbs.map((crumb, index) => {
               const last = index === crumbs.length - 1;
@@ -210,7 +215,7 @@ export default function AppShell({
           </div>
         </header>
 
-        <main className={`content${wide ? '' : ' content--narrow'}`}>{children}</main>
+        <main className={`content ${wide ? 'content--wide' : 'content--narrow'}`}>{children}</main>
       </div>
 
       <nav className="mobilenav" aria-label="Основные разделы">

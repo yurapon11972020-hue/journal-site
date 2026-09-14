@@ -76,7 +76,6 @@ export default function JournalTable({
               <th scope="col" className="col-sum" title="Пропуски без уважительной причины">
                 Неув.
               </th>
-              <th className="col-filler" aria-hidden />
             </tr>
           </thead>
           <tbody>
@@ -108,7 +107,6 @@ export default function JournalTable({
                 <td className="col-sum">
                   <AbsenceBadge value={row.absences.invalid} kind="invalid" />
                 </td>
-                <td className="col-filler" />
               </tr>
             ))}
           </tbody>

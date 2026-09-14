@@ -2,18 +2,11 @@
 
 import { useMemo, useState } from 'react';
 
+import Link from 'next/link';
+
 import AppShell, { type NavGroup } from '@/components/app-shell';
 import JournalTable, { JournalLegend, type JournalColumn, type JournalRow } from '@/components/journal-table';
-import {
-  IconAlert,
-  IconAttendance,
-  IconGrades,
-  IconJournal,
-  IconOverview,
-  IconTeachers,
-  IconTopics,
-  IconChevronRight,
-} from '@/components/icons';
+import { IconArrowLeft, IconJournal, IconTopics, IconChevronRight } from '@/components/icons';
 import {
   AbsenceBadge,
   AverageBar,
@@ -35,7 +28,8 @@ interface DashboardProps {
 // Студент считается «требующим внимания», если его средний балл ниже этого порога.
 const AT_RISK_AVERAGE = 3;
 
-type SectionId = 'overview' | 'journal' | 'performance' | 'attendance' | 'topics' | 'teachers';
+type SectionId = 'journal' | 'topics';
+type JournalTab = 'reports' | 'subjects';
 type StudentSort = 'name' | 'avg-desc' | 'avg-asc' | 'absences';
 type SubjectSort = 'default' | 'name' | 'avg-desc' | 'avg-asc' | 'absences';
 
@@ -228,7 +222,8 @@ function formatUpdatedAt(value: string): string {
 
 export default function Dashboard({ data, backHref = '/', backLabel = 'Все группы' }: DashboardProps) {
   const subjects = useMemo(() => buildSubjectAggregates(data), [data]);
-  const [section, setSection] = useState<SectionId>('overview');
+  const [section, setSection] = useState<SectionId>('journal');
+  const [journalTab, setJournalTab] = useState<JournalTab>('reports');
   const [subjectId, setSubjectId] = useState<string>(() => subjects[0]?.id ?? '');
   const [subjectSort, setSubjectSort] = useState<SubjectSort>('default');
   const [studentSearch, setStudentSearch] = useState('');
@@ -391,34 +386,29 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
   const navGroups: NavGroup[] = [
     {
       items: [
-        { id: 'overview', label: 'Обзор', shortLabel: 'Обзор', icon: <IconOverview size={18} /> },
-        { id: 'journal', label: 'Журнал', shortLabel: 'Журнал', icon: <IconJournal size={18} />, count: subjects.length },
-        { id: 'performance', label: 'Успеваемость', shortLabel: 'Оценки', icon: <IconGrades size={18} /> },
-        { id: 'attendance', label: 'Посещаемость', icon: <IconAttendance size={18} /> },
-      ],
-    },
-    {
-      label: 'Справочник',
-      items: [
+        { id: 'journal', label: 'Журнал', icon: <IconJournal size={18} />, count: subjects.length },
         {
           id: 'topics',
           label: 'Темы занятий',
+          shortLabel: 'Темы',
           icon: <IconTopics size={18} />,
           count: subjectsWithTopics.length || undefined,
         },
-        { id: 'teachers', label: 'Преподаватели', icon: <IconTeachers size={18} /> },
       ],
     },
   ];
 
   const sectionTitles: Record<SectionId, string> = {
-    overview: 'Обзор',
     journal: 'Журнал',
-    performance: 'Успеваемость',
-    attendance: 'Посещаемость',
     topics: 'Темы занятий',
-    teachers: 'Преподаватели',
   };
+
+  const backButton = (
+    <Link className="btn btn--quiet btn--back" href={backHref}>
+      <IconArrowLeft size={17} />
+      <span className="btn__text">{backLabel}</span>
+    </Link>
+  );
 
   return (
     <AppShell
@@ -427,27 +417,24 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
       groups={navGroups}
       activeId={section}
       onSelect={(id) => setSection(id as SectionId)}
-      crumbs={[{ label: backLabel, href: backHref }, { label: groupName }, { label: sectionTitles[section] }]}
+      crumbs={[{ label: groupName }, { label: sectionTitles[section] }]}
       identName={groupName}
       identSub={`${stats.studentCount} ${pluralize(stats.studentCount, 'студент', 'студента', 'студентов')}`}
-      mobileIds={['overview', 'journal', 'performance']}
-      wide={section === 'journal'}
+      mobileIds={['journal', 'topics']}
+      back={backButton}
+      wide
     >
-      {section === 'overview' ? (
+      {section === 'journal' ? (
         <>
           <PageHead
-            title="Обзор"
+            title="Журнал"
             subtitle={updatedLabel ? `Данные обновлены ${updatedLabel}` : undefined}
           />
 
-          <div className="metrics" style={{ marginBottom: 16 }}>
+          <div className="metrics" style={{ marginBottom: 18 }}>
             <Metric label="Студентов" value={String(stats.studentCount)} />
             <Metric label="Предметов" value={String(stats.subjectCount)} />
-            <Metric
-              label="Средний балл группы"
-              value={formatAverage(stats.averageGpa)}
-              hint={stats.averageGpa !== null && stats.averageGpa >= 4.5 ? 'Выше 4,5' : undefined}
-            />
+            <Metric label="Средний балл группы" value={formatAverage(stats.averageGpa)} />
             <Metric
               label="Пропусков всего"
               value={String(stats.valid + stats.invalid)}
@@ -460,320 +447,181 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
             />
           </div>
 
-          <div style={{ display: 'grid', gap: 16 }}>
-            <Card
-              title="Предметы"
-              subtitle="Средний балл и пропуски по каждому предмету"
-              flush
+          <div className="tabs" role="tablist" aria-label="Что показывать">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={journalTab === 'reports'}
+              className={`tabs__item${journalTab === 'reports' ? ' tabs__item--active' : ''}`}
+              onClick={() => setJournalTab('reports')}
             >
-              {subjectSummaries.length ? (
-                <div className="tablebox">
-                  <div className="tablebox__scroll">
-                    <table className="dtable">
-                      <thead>
-                        <tr>
-                          <th scope="col" className="wrap">Предмет</th>
-                          <th scope="col" className="num">Занятий</th>
-                          <th scope="col" className="num">Оценок</th>
-                          <th scope="col" className="num">Средний</th>
-                          <th scope="col" className="num">Уваж.</th>
-                          <th scope="col" className="num">Неуваж.</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {subjectSummaries.map((subject) => (
-                          <tr key={subject.id}>
-                            <th scope="row" className="wrap" style={{ fontWeight: 550, maxWidth: 420 }}>
-                              {subject.name}
-                              {subject.teacherName ? (
-                                <div style={{ fontSize: 12.5, color: 'var(--text-2)', fontWeight: 400 }}>
-                                  {subject.teacherName}
-                                </div>
-                              ) : null}
-                            </th>
-                            <td className="num">{subject.lessonCount || '—'}</td>
-                            <td className="num">{subject.gradeCount || '—'}</td>
-                            <td className="num">
-                              <GradeBadge value={subject.average} />
-                            </td>
-                            <td className="num">
-                              <AbsenceBadge value={subject.valid} kind="valid" />
-                            </td>
-                            <td className="num">
-                              <AbsenceBadge value={subject.invalid} kind="invalid" />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : (
-                <EmptyState title="Предметы не найдены" text="В файле журнала нет ни одного листа с предметом." />
-              )}
-            </Card>
-
-            {stats.atRisk > 0 ? (
-              <Card
-                title="Требуют внимания"
-                subtitle={`Средний балл ниже ${AT_RISK_AVERAGE}`}
-                flush
-              >
-                <div className="rowlist">
-                  {data.students
-                    .filter((student) => isAtRiskAverage(student.overallAverage))
-                    .map((student) => (
-                      <div className="rowitem" key={student.id} style={{ cursor: 'default' }}>
-                        <span style={{ color: 'var(--warning)', display: 'flex' }}>
-                          <IconAlert size={17} />
-                        </span>
-                        <span className="rowitem__main">
-                          <span className="rowitem__name">{student.name}</span>
-                          <span className="rowitem__meta">
-                            Пропусков: {student.totalAbsences.valid + student.totalAbsences.invalid}
-                          </span>
-                        </span>
-                        <span className="rowitem__aside">
-                          <GradeBadge value={student.overallAverage} />
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              </Card>
-            ) : null}
+              Табели
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={journalTab === 'subjects'}
+              className={`tabs__item${journalTab === 'subjects' ? ' tabs__item--active' : ''}`}
+              onClick={() => setJournalTab('subjects')}
+            >
+              Оценки по предметам
+            </button>
           </div>
-        </>
-      ) : null}
 
-      {section === 'journal' ? (
-        <>
-          <PageHead
-            title="Журнал"
-            subtitle={selectedSubject?.teacherName ? `Преподаватель: ${selectedSubject.teacherName}` : undefined}
-          />
-
-          {subjects.length ? (
+          {journalTab === 'reports' ? (
             <>
               <div className="filters">
-                <label className="field filters__grow" htmlFor="journal-subject" style={{ maxWidth: 460 }}>
-                  <span className="field__label">Предмет</span>
-                  <select
-                    id="journal-subject"
-                    className="select"
-                    value={selectedSubject?.id ?? ''}
-                    onChange={(event) => setSubjectId(event.target.value)}
-                  >
-                    {subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.subjectName}
-                      </option>
-                    ))}
-                  </select>
+                <label className="field filters__grow" htmlFor="student-search" style={{ maxWidth: 340 }}>
+                  <span className="field__label">Поиск по фамилии</span>
+                  <input
+                    id="student-search"
+                    className="input"
+                    type="search"
+                    placeholder="Например, Иванов"
+                    value={studentSearch}
+                    onChange={(event) => setStudentSearch(event.target.value)}
+                  />
                 </label>
-
-                <label className="field" htmlFor="journal-sort" style={{ minWidth: 220 }}>
-                  <span className="field__label">Порядок студентов</span>
+                <label className="field" htmlFor="student-sort" style={{ minWidth: 240 }}>
+                  <span className="field__label">Сортировка</span>
                   <select
-                    id="journal-sort"
+                    id="student-sort"
                     className="select"
-                    value={subjectSort}
-                    onChange={(event) => setSubjectSort(event.target.value as SubjectSort)}
+                    value={studentSort}
+                    onChange={(event) => setStudentSort(event.target.value as StudentSort)}
                   >
-                    <option value="default">Как в журнале</option>
                     <option value="name">По фамилии</option>
                     <option value="avg-desc">Средний балл: больше → меньше</option>
                     <option value="avg-asc">Средний балл: меньше → больше</option>
                     <option value="absences">Больше всего пропусков</option>
                   </select>
                 </label>
-
-                <div className="filters__note">
-                  {journalColumns.length} {pluralize(journalColumns.length, 'занятие', 'занятия', 'занятий')} ·{' '}
-                  {journalRows.length} {pluralize(journalRows.length, 'студент', 'студента', 'студентов')}
-                </div>
+                <div className="filters__note">Найдено: {visibleStudents.length}</div>
               </div>
 
               <section className="card">
-                {journalColumns.length ? (
-                  <>
-                    <JournalTable
-                      columns={journalColumns}
-                      rows={journalRows}
-                      caption={`Журнал по предмету «${selectedSubject?.subjectName ?? ''}»`}
-                    />
-                    <JournalLegend />
-                  </>
+                {visibleStudents.length ? (
+                  <div className="rowlist">
+                    {visibleStudents.map((card) => (
+                      <StudentRow
+                        key={card.studentId}
+                        card={card}
+                        open={openStudents.includes(card.studentId)}
+                        onToggle={() => toggleStudent(card.studentId)}
+                      />
+                    ))}
+                  </div>
                 ) : (
                   <EmptyState
-                    title="Занятий пока нет"
-                    text="По этому предмету в журнале ещё не отмечено ни одной даты. Как только появятся — таблица заполнится сама."
+                    title="Никого не нашлось"
+                    text="Попробуй другую фамилию или её часть — поиск не учитывает регистр и букву «ё»."
                   />
                 )}
               </section>
-
-              {selectedSubject?.lessonTopics.length ? (
-                <div style={{ marginTop: 16 }}>
-                  <Card title="Темы и задания" subtitle={`${selectedSubject.lessonTopics.length} записей`}>
-                    <div className="topics">
-                      {selectedSubject.lessonTopics.map((topic) => (
-                        <article className="topic" key={`${selectedSubject.id}-${topic.row}`}>
-                          <div className="topic__date">{topic.dateLabel}</div>
-                          <div className="topic__text">{topic.topic}</div>
-                          {topic.extra ? <div className="topic__extra">{topic.extra}</div> : null}
-                        </article>
-                      ))}
-                    </div>
-                  </Card>
-                </div>
-              ) : null}
             </>
-          ) : (
-            <Card>
-              <EmptyState
-                title="Предметы не найдены"
-                text="В файле журнала нет листов с предметами. Проверь, что по ссылке лежит нужный файл."
-              />
-            </Card>
-          )}
-        </>
-      ) : null}
+          ) : null}
 
-      {section === 'performance' ? (
-        <>
-          <PageHead title="Успеваемость" subtitle="Средний балл по каждому студенту и разбивка по предметам" />
+          {journalTab === 'subjects' ? (
+            subjects.length ? (
+              <>
+                <div className="filters">
+                  <label className="field filters__grow" htmlFor="journal-subject" style={{ maxWidth: 460 }}>
+                    <span className="field__label">Предмет</span>
+                    <select
+                      id="journal-subject"
+                      className="select"
+                      value={selectedSubject?.id ?? ''}
+                      onChange={(event) => setSubjectId(event.target.value)}
+                    >
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.subjectName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-          <div className="filters">
-            <label className="field filters__grow" htmlFor="student-search" style={{ maxWidth: 360 }}>
-              <span className="field__label">Поиск по фамилии</span>
-              <input
-                id="student-search"
-                className="input"
-                type="search"
-                placeholder="Например, Иванов"
-                value={studentSearch}
-                onChange={(event) => setStudentSearch(event.target.value)}
-              />
-            </label>
-            <label className="field" htmlFor="student-sort" style={{ minWidth: 240 }}>
-              <span className="field__label">Сортировка</span>
-              <select
-                id="student-sort"
-                className="select"
-                value={studentSort}
-                onChange={(event) => setStudentSort(event.target.value as StudentSort)}
-              >
-                <option value="name">По фамилии</option>
-                <option value="avg-desc">Средний балл: больше → меньше</option>
-                <option value="avg-asc">Средний балл: меньше → больше</option>
-                <option value="absences">Больше всего пропусков</option>
-              </select>
-            </label>
-            <div className="filters__note">Найдено: {visibleStudents.length}</div>
-          </div>
+                  <label className="field" htmlFor="journal-sort" style={{ minWidth: 220 }}>
+                    <span className="field__label">Порядок студентов</span>
+                    <select
+                      id="journal-sort"
+                      className="select"
+                      value={subjectSort}
+                      onChange={(event) => setSubjectSort(event.target.value as SubjectSort)}
+                    >
+                      <option value="default">Как в журнале</option>
+                      <option value="name">По фамилии</option>
+                      <option value="avg-desc">Средний балл: больше → меньше</option>
+                      <option value="avg-asc">Средний балл: меньше → больше</option>
+                      <option value="absences">Больше всего пропусков</option>
+                    </select>
+                  </label>
 
-          <section className="card">
-            {visibleStudents.length ? (
-              <div className="rowlist">
-                {visibleStudents.map((card) => (
-                  <StudentRow
-                    key={card.studentId}
-                    card={card}
-                    open={openStudents.includes(card.studentId)}
-                    onToggle={() => toggleStudent(card.studentId)}
-                  />
-                ))}
-              </div>
+                  <div className="filters__note">
+                    {journalColumns.length} {pluralize(journalColumns.length, 'занятие', 'занятия', 'занятий')} ·{' '}
+                    {journalRows.length} {pluralize(journalRows.length, 'студент', 'студента', 'студентов')}
+                  </div>
+                </div>
+
+                {/* Преподаватель подписан прямо у своего предмета. */}
+                <div className="subjectbar">
+                  <h2 className="subjectbar__name">{selectedSubject?.subjectName}</h2>
+                  <p className="subjectbar__teacher">
+                    {selectedSubject?.teacherName ? (
+                      <>Преподаватель: {selectedSubject.teacherName}</>
+                    ) : (
+                      <span style={{ color: 'var(--text-3)' }}>Преподаватель не указан в журнале</span>
+                    )}
+                  </p>
+                </div>
+
+                {journalColumns.length ? (
+                  <>
+                    {/* Карточка ужата по таблице, легенда вынесена под неё:
+                        иначе ширину карточки задавала бы длинная легенда. */}
+                    <section className="card card--fit">
+                      <JournalTable
+                        columns={journalColumns}
+                        rows={journalRows}
+                        caption={`Журнал по предмету «${selectedSubject?.subjectName ?? ''}»`}
+                      />
+                    </section>
+                    <JournalLegend />
+                  </>
+                ) : (
+                  <section className="card">
+                    <EmptyState
+                      title="Занятий пока нет"
+                      text="По этому предмету в журнале ещё не отмечено ни одной даты. Как только появятся — таблица заполнится сама."
+                    />
+                  </section>
+                )}
+
+                {selectedSubject?.lessonTopics.length ? (
+                  <div style={{ marginTop: 18 }}>
+                    <Card title="Темы и задания" subtitle={`${selectedSubject.lessonTopics.length} записей`}>
+                      <div className="topics">
+                        {selectedSubject.lessonTopics.map((topic) => (
+                          <article className="topic" key={`${selectedSubject.id}-${topic.row}`}>
+                            <div className="topic__date">{topic.dateLabel}</div>
+                            <div className="topic__text">{topic.topic}</div>
+                            {topic.extra ? <div className="topic__extra">{topic.extra}</div> : null}
+                          </article>
+                        ))}
+                      </div>
+                    </Card>
+                  </div>
+                ) : null}
+              </>
             ) : (
-              <EmptyState
-                title="Никого не нашлось"
-                text="Попробуй другую фамилию или её часть — поиск не учитывает регистр и букву «ё»."
-              />
-            )}
-          </section>
-        </>
-      ) : null}
-
-      {section === 'attendance' ? (
-        <>
-          <PageHead title="Посещаемость" subtitle="Пропуски по студентам, с разбивкой по предметам" />
-
-          <div className="metrics" style={{ marginBottom: 16 }}>
-            <Metric label="Пропусков всего" value={String(stats.valid + stats.invalid)} />
-            <Metric label="По уважительной причине" value={String(stats.valid)} />
-            <Metric label="Без уважительной причины" value={String(stats.invalid)} />
-          </div>
-
-          <section className="card">
-            {attendanceRows.some((row) => row.total > 0) ? (
-              <div className="rowlist">
-                {attendanceRows
-                  .filter((row) => row.total > 0)
-                  .map((row) => (
-                    <div key={row.id}>
-                      <button
-                        type="button"
-                        className="rowitem"
-                        onClick={() => toggleStudent(row.id)}
-                        aria-expanded={openStudents.includes(row.id)}
-                      >
-                        <span
-                          className={`rowitem__chev${openStudents.includes(row.id) ? ' rowitem__chev--open' : ''}`}
-                        >
-                          <IconChevronRight size={16} />
-                        </span>
-                        <span className="rowitem__main">
-                          <span className="rowitem__name">{row.name}</span>
-                          <span className="rowitem__meta">
-                            {row.bySubject.length}{' '}
-                            {pluralize(row.bySubject.length, 'предмет', 'предмета', 'предметов')} с пропусками
-                          </span>
-                        </span>
-                        <span className="rowitem__aside">
-                          {row.invalid > 0 ? (
-                            <StatusBadge tone="danger">Неуваж. {row.invalid}</StatusBadge>
-                          ) : null}
-                          {row.valid > 0 ? <StatusBadge tone="neutral">Уваж. {row.valid}</StatusBadge> : null}
-                        </span>
-                      </button>
-
-                      {openStudents.includes(row.id) ? (
-                        <div className="rowpanel">
-                          <table className="dtable">
-                            <thead>
-                              <tr>
-                                <th scope="col" className="wrap">Предмет</th>
-                                <th scope="col" className="num">Уваж.</th>
-                                <th scope="col" className="num">Неуваж.</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {row.bySubject.map((subject) => (
-                                <tr key={`${row.id}-${subject.name}`}>
-                                  <th scope="row" className="wrap" style={{ fontWeight: 450 }}>
-                                    {subject.name}
-                                  </th>
-                                  <td className="num">
-                                    <AbsenceBadge value={subject.valid} kind="valid" />
-                                  </td>
-                                  <td className="num">
-                                    <AbsenceBadge value={subject.invalid} kind="invalid" />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-              </div>
-            ) : (
-              <EmptyState
-                title="Пропусков нет"
-                text="Ни у одного студента в журнале не отмечено пропусков. Хороший знак."
-              />
-            )}
-          </section>
+              <section className="card">
+                <EmptyState
+                  title="Предметы не найдены"
+                  text="В файле журнала нет листов с предметами. Проверь, что по ссылке лежит нужный файл."
+                />
+              </section>
+            )
+          ) : null}
         </>
       ) : null}
 
@@ -787,7 +635,7 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
                 <Card
                   key={subject.id}
                   title={subject.subjectName}
-                  subtitle={subject.teacherName ?? undefined}
+                  subtitle={subject.teacherName ?? 'Преподаватель не указан'}
                 >
                   <div className="topics">
                     {subject.lessonTopics.map((topic) => (
@@ -811,51 +659,10 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
           )}
         </>
       ) : null}
-
-      {section === 'teachers' ? (
-        <>
-          <PageHead title="Преподаватели" subtitle="Кто ведёт какой предмет" />
-
-          <section className="card">
-            {subjectSummaries.some((subject) => subject.teacherName) ? (
-              <div className="tablebox">
-                <div className="tablebox__scroll">
-                  <table className="dtable">
-                    <thead>
-                      <tr>
-                        <th scope="col" className="wrap">Предмет</th>
-                        <th scope="col" className="wrap">Преподаватель</th>
-                        <th scope="col" className="num">Занятий</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {subjectSummaries.map((subject) => (
-                        <tr key={subject.id}>
-                          <th scope="row" className="wrap" style={{ fontWeight: 550, maxWidth: 480 }}>
-                            {subject.name}
-                          </th>
-                          <td className="wrap">
-                            {subject.teacherName ?? <span style={{ color: 'var(--text-3)' }}>не указан</span>}
-                          </td>
-                          <td className="num">{subject.lessonCount || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : (
-              <EmptyState
-                title="Преподаватели не указаны"
-                text="В файле журнала не заполнены фамилии преподавателей, поэтому показывать пока нечего."
-              />
-            )}
-          </section>
-        </>
-      ) : null}
     </AppShell>
   );
 }
+
 
 /* --------------------------- строка студента --------------------------- */
 
