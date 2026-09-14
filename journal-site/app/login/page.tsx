@@ -21,33 +21,41 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const nextPath = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
 
   return (
-    <main className="login-page">
-      <form className="login-card" method="post" action="/api/login">
-        <div className="kicker">Электронный журнал</div>
-        <h1 className="login-card__title">Вход по коду</h1>
-        <p className="login-card__hint">Введи код доступа, который выдал куратор группы.</p>
+    <main className="auth">
+      <form className="auth__card" method="post" action="/api/login">
+        <div className="auth__logo" aria-hidden>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+            <path d="M12 3 2 8l10 5 10-5-10-5Z" />
+            <path d="M5 10.5V16c0 1.7 3.1 3 7 3s7-1.3 7-3v-5.5" />
+          </svg>
+        </div>
+
+        <h1 className="auth__title">Вход в электронный журнал</h1>
+        <p className="auth__text">Введи код доступа, который выдал куратор группы.</p>
 
         <input type="hidden" name="next" value={nextPath} />
-        <label className="login-card__label" htmlFor="access-code">
-          Код доступа
+
+        <label className="field" htmlFor="access-code">
+          <span className="field__label">Код доступа</span>
+          <input
+            id="access-code"
+            name="code"
+            type="password"
+            className="input"
+            autoComplete="current-password"
+            autoFocus
+            required
+            aria-describedby={error ? 'access-code-error' : undefined}
+          />
         </label>
-        <input
-          id="access-code"
-          name="code"
-          type="password"
-          className="login-card__input"
-          autoComplete="current-password"
-          autoFocus
-          required
-        />
 
         {error ? (
-          <p className="login-card__error" role="alert">
-            Неверный код. Попробуй ещё раз.
+          <p className="auth__error" id="access-code-error" role="alert">
+            Неверный код. Проверь раскладку и попробуй ещё раз.
           </p>
         ) : null}
 
-        <button type="submit" className="login-card__submit">
+        <button type="submit" className="btn btn--primary btn--block" style={{ marginTop: 16, minHeight: 40 }}>
           Войти
         </button>
       </form>

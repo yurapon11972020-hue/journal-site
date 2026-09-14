@@ -1,29 +1,111 @@
+/* ============================================================
+   Электронный журнал — система оформления.
+
+   Один файл на весь проект: сначала переменные, затем база,
+   каркас приложения, примитивы и уже потом страницы.
+   Внутри — только оформление; вся работа с данными живёт в lib/.
+   ============================================================ */
+
+/* ---------------------------------------------------------------
+   1. Переменные
+   --------------------------------------------------------------- */
+
 :root,
-html[data-theme='dark'] {
-  color-scheme: dark;
-  --bg: #0f1728;
-  --panel: #162033;
-  --panel-alt: #1b2740;
-  --border: #30405e;
-  --text: #eef3ff;
-  --muted: #a9b6cf;
-  --accent: #78a7ff;
-  --accent-strong: #a9c4ff;
-  --shadow: 0 14px 40px rgba(2, 10, 24, 0.28);
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --surface-3: #f0f2f5;
+
+  --border: #e2e6ea;
+  --border-strong: #ccd3da;
+
+  --text: #15191e;
+  --text-2: #66707a;
+  --text-3: #8b949e;
+
+  --primary: #193b63;
+  --primary-hover: #122d4d;
+  --primary-soft: #eaeff5;
+  --primary-on: #ffffff;
+
+  --accent: #316fa5;
+  --accent-soft: #e8f0f7;
+
+  --success: #2f7d55;
+  --success-soft: #e8f3ec;
+  --warning: #9a6612;
+  --warning-soft: #fbf1e0;
+  --danger: #b3342e;
+  --danger-soft: #fbeceb;
+  --info: #2c5f96;
+  --info-soft: #e9f0f8;
+
+  --focus: #316fa5;
+
+  --shadow-sm: 0 1px 2px rgba(21, 25, 30, 0.05);
+  --shadow-md: 0 2px 8px rgba(21, 25, 30, 0.07);
+  --shadow-lg: 0 8px 28px rgba(21, 25, 30, 0.12);
+
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  --sidebar-w: 236px;
+  --topbar-h: 64px;
+  --mobilenav-h: 60px;
+
+  --font: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --ease: cubic-bezier(0.32, 0.72, 0.35, 1);
+  --t-fast: 150ms var(--ease);
+  --t: 190ms var(--ease);
 }
 
-html[data-theme='light'] {
-  color-scheme: light;
-  --bg: #eef2f7;
-  --panel: #ffffff;
-  --panel-alt: #f7f9fc;
-  --border: #d3dbe8;
-  --text: #1b2433;
-  --muted: #647189;
-  --accent: #295fd6;
-  --accent-strong: #153d94;
-  --shadow: 0 14px 36px rgba(32, 54, 94, 0.1);
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #10141a;
+  --surface: #171c23;
+  --surface-2: #1c222a;
+  --surface-3: #232a34;
+
+  --border: #2a313b;
+  --border-strong: #3a434f;
+
+  --text: #e7eaee;
+  --text-2: #9aa4b0;
+  --text-3: #79838f;
+
+  --primary: #7ba8d4;
+  --primary-hover: #94bbe2;
+  --primary-soft: #1d2937;
+  --primary-on: #0e1319;
+
+  --accent: #6fa3d4;
+  --accent-soft: #1b2733;
+
+  --success: #6fbd8e;
+  --success-soft: #16251d;
+  --warning: #d6a355;
+  --warning-soft: #26200f;
+  --danger: #e0817b;
+  --danger-soft: #2a1917;
+  --info: #7aa7d6;
+  --info-soft: #182431;
+
+  --focus: #7ba8d4;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 10px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
+
+/* ---------------------------------------------------------------
+   2. База
+   --------------------------------------------------------------- */
 
 * {
   box-sizing: border-box;
@@ -34,13 +116,16 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 body {
-  transition: background 0.2s ease, color 0.2s ease;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -50,680 +135,1612 @@ a {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+  color: inherit;
 }
 
-.page-shell {
-  width: min(1800px, calc(100% - 24px));
-  margin: 0 auto;
-  padding: 20px 0 40px;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 18px;
-}
-
-.eyebrow {
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.page-title {
-  margin: 4px 0 0;
-  font-size: clamp(1.8rem, 3vw, 2.5rem);
-}
-
-.theme-toggle {
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 10px 14px;
-  cursor: pointer;
-  box-shadow: var(--shadow);
-}
-
-.theme-toggle:hover {
-  border-color: var(--accent);
-  color: var(--accent-strong);
-}
-
-.tab-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.tab-chip {
-  min-height: 48px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 14px;
-  padding: 10px 14px;
-  cursor: pointer;
-  text-align: center;
-  box-shadow: var(--shadow);
-}
-
-.tab-chip:hover {
-  border-color: var(--accent);
-}
-
-.tab-chip--active {
-  border-color: var(--accent);
-  color: var(--accent-strong);
-  background: var(--panel-alt);
-}
-
-.cards-stack,
-.subject-section,
-.sheet-card {
-  display: grid;
-  gap: 14px;
-}
-
-.cards-stack {
-  gap: 16px;
-}
-
-.sheet-card,
-.subject-section {
-  padding: 18px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
-}
-
-.sheet-card__title {
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.subject-title {
+h1,
+h2,
+h3,
+h4,
+p {
   margin: 0;
-  font-size: 1.2rem;
 }
 
-.subject-subtitle {
-  margin-top: 4px;
-  color: var(--muted);
+:where(a, button, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
-.table-wrap {
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel-alt);
+/* Видно только скринридеру: подписи там, где по макету текста нет. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.table-wrap--subject {
-  overflow-x: auto;
+/* ---------------------------------------------------------------
+   3. Каркас приложения
+   --------------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
 }
 
-.journal-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 720px;
-}
+/* ----- Боковое меню ----- */
 
-.subject-table {
-  --lesson-count: 1;
-  --num-width: 3rem;
-  --name-width: clamp(10rem, 21vw, 16rem);
-  --summary-width: clamp(3.5rem, 4.4vw, 4.5rem);
-  --lesson-width: 3.4rem;
-  min-width: 0;
-  /* Ширина по содержимому, а не на весь контейнер: иначе при двух-трёх
-     занятиях браузер раздаёт лишнюю ширину клеткам с оценками, и они
-     растягиваются на пол-экрана. */
-  width: auto;
-  table-layout: fixed;
-  font-size: clamp(0.68rem, 0.82vw, 0.94rem);
-}
-
-.subject-table--compact {
-  font-size: clamp(0.64rem, 0.74vw, 0.88rem);
-}
-
-.subject-table--dense {
-  font-size: clamp(0.58rem, 0.66vw, 0.82rem);
-}
-
-.journal-table th,
-.journal-table td {
-  border: 1px solid var(--border);
-  padding: 10px 12px;
-  vertical-align: middle;
-}
-
-.subject-table th,
-.subject-table td {
-  padding: 7px 6px;
-}
-
-.journal-table thead th {
+.sidebar {
   position: sticky;
   top: 0;
-  z-index: 3;
-  background: var(--panel-alt);
-  font-weight: 700;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 
-.journal-table tfoot td {
-  font-weight: 700;
-  background: var(--panel-alt);
-}
-
-.center-cell {
-  text-align: center;
-  white-space: nowrap;
-}
-
-.lesson-head {
-  width: var(--lesson-width);
-  min-width: var(--lesson-width);
-  text-align: center;
-  padding: 6px 2px !important;
-  white-space: nowrap;
-}
-
-.lesson-head__day {
-  font-weight: 700;
-}
-
-.lesson-head__month {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 0.72em;
-  line-height: 1.1;
-  white-space: normal;
-}
-
-.lesson-head__topic-count {
-  margin-top: 4px;
-  color: var(--accent-strong);
-  font-size: 0.68em;
-  line-height: 1.1;
-}
-
-.lesson-topics {
-  display: grid;
-  gap: 12px;
-}
-
-.lesson-topics__header {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.lesson-topics__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.lesson-topic-card {
-  display: grid;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  background: var(--panel-alt);
-  border-radius: 14px;
-}
-
-.lesson-topic-card__date {
-  font-weight: 700;
-  color: var(--accent-strong);
-}
-
-.lesson-topic-card__text {
-  line-height: 1.45;
-}
-
-.lesson-topic-card__extra {
-  color: var(--muted);
-  font-size: 0.94rem;
-}
-
-.lesson-cell {
-  width: var(--lesson-width);
-  min-width: var(--lesson-width);
-  padding: 6px 2px !important;
-  font-weight: 600;
-}
-
-.sticky-col {
-  position: sticky;
-  background: var(--panel-alt);
-  z-index: 2;
-}
-
-.sticky-col--num {
-  left: 0;
-  width: var(--num-width);
-  min-width: var(--num-width);
-}
-
-.sticky-col--name {
-  left: var(--num-width);
-  width: var(--name-width);
-  min-width: var(--name-width);
-  white-space: normal;
-}
-
-.subject-table .summary-col {
-  width: var(--summary-width);
-}
-
-
-@media (max-width: 900px) {
-  .table-wrap--subject {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x pan-y;
-  }
-
-  .page-shell {
-    width: min(100%, calc(100% - 14px));
-  }
-
-  .page-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .tab-grid {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  }
-
-  .sheet-card,
-  .subject-section {
-    padding: 12px;
-  }
-
-  .subject-table {
-    /* Узкие служебные колонки: чем меньше они занимают, тем больше
-       дат помещается на экран телефона и тем меньше нужно листать. */
-    --num-width: 2.1rem;
-    --name-width: 6.6rem;
-    --summary-width: 2.6rem;
-    min-width: calc(var(--num-width) + var(--name-width) + (3 * var(--summary-width)) + (var(--lesson-count) * var(--lesson-width)));
-    font-size: 0.8rem;
-  }
-
-  .subject-table {
-    --lesson-width: 2.7rem;
-  }
-
-  .lesson-topics__list {
-    grid-template-columns: 1fr;
-  }
-}
-
-.page-subtitle {
-  margin: 8px 0 0;
-  color: var(--muted);
-}
-
-.header-actions {
-  margin-top: 10px;
-}
-
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--accent-strong);
-}
-
-.back-link:hover {
-  text-decoration: underline;
-}
-
-.tab-chip--link {
+.sidebar__brand {
   display: flex;
   align-items: center;
-  justify-content: center;
-}
-
-.toolbar-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.search-box {
-  display: grid;
-  gap: 6px;
-  min-width: min(100%, 360px);
-}
-
-.search-box__label {
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.search-box__input {
-  width: 100%;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 12px 14px;
-}
-
-.search-box__input:focus {
-  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: 2px;
-  border-color: var(--accent);
-}
-
-.toolbar-note {
-  color: var(--muted);
-}
-
-.sheet-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.sheet-toggle__main {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.sheet-toggle__arrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel-alt);
-  color: var(--accent-strong);
-  transition: transform 0.18s ease;
+  gap: 10px;
+  height: var(--topbar-h);
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.sheet-toggle__arrow--open {
-  transform: rotate(90deg);
+.sidebar__logo {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-on);
 }
 
-.sheet-card__meta {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: 0.92rem;
+.sidebar__brand-text {
+  min-width: 0;
+  display: grid;
 }
 
-.sheet-toggle__aside {
-  color: var(--muted);
+.sidebar__brand-name {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__brand-sub {
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 10px;
+}
+
+.sidebar__group-label {
+  padding: 0 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sidebar__group + .sidebar__group {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.navitem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+
+.navitem + .navitem {
+  margin-top: 2px;
+}
+
+.navitem:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.navitem--active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Тонкая вертикальная отметка вместо сплошной заливки. */
+.navitem--active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--primary);
+}
+
+.navitem__icon {
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.navitem__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.sheet-card--expanded {
+.navitem__count {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.navitem--active .navitem__count {
+  background: var(--surface);
+  color: var(--primary);
+}
+
+.sidebar__foot {
+  flex-shrink: 0;
+  padding: 12px 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* ----- Верхняя панель ----- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--topbar-h);
+  padding: 0 22px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar__crumbs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.topbar__crumb-link {
+  color: var(--text-2);
+  transition: color var(--t-fast);
+  white-space: nowrap;
+}
+
+.topbar__crumb-link:hover {
+  color: var(--text);
+}
+
+.topbar__crumb-current {
+  color: var(--text);
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__sep {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.topbar__date {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 10px;
+  margin-right: 2px;
+  border-right: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.topbar__ident {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 10px 5px 5px;
+  border-radius: var(--radius);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.topbar__ident-text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.topbar__ident-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__ident-sub {
+  font-size: 11.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ----- Основная колонка ----- */
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  flex: 1;
+  width: 100%;
+  padding: 22px;
+}
+
+/* Страницы-таблицы занимают всю ширину, текстовые — ограничены. */
+.content--narrow > * {
+  max-width: 1080px;
+}
+
+/* ----- Нижняя навигация (телефон) ----- */
+
+.mobilenav {
+  display: none;
+}
+
+.drawer-backdrop {
+  display: none;
+}
+
+/* ---------------------------------------------------------------
+   4. Примитивы
+   --------------------------------------------------------------- */
+
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
 }
 
-.empty-state {
-  padding: 18px;
-  border: 1px dashed var(--border);
-  border-radius: 16px;
-  background: var(--panel);
-  color: var(--muted);
-  text-align: center;
+.page-head__title {
+  font-size: 25px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
-@media (max-width: 900px) {
-  .sheet-toggle {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .sheet-toggle__aside {
-    white-space: normal;
-  }
+.page-head__sub {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-2);
 }
 
-.mark {
+.page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card__title {
+  font-size: 15.5px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+}
+
+.card__sub {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.card__body {
+  padding: 16px;
+}
+
+.card__body--flush {
+  padding: 0;
+}
+
+.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2rem;
-  min-height: 1.75rem;
-  padding: 0.18rem 0.48rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  font-weight: 800;
-  line-height: 1;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-.mark--excellent {
-  color: #dffbea;
-  background: rgba(34, 197, 94, 0.28);
-  border-color: rgba(74, 222, 128, 0.72);
-}
-
-.mark--good {
-  color: #e7f0ff;
-  background: rgba(59, 130, 246, 0.28);
-  border-color: rgba(147, 197, 253, 0.7);
-}
-
-.mark--ok {
-  color: #fff7db;
-  background: rgba(245, 158, 11, 0.3);
-  border-color: rgba(251, 191, 36, 0.72);
-}
-
-.mark--bad {
-  color: #fff1f2;
-  background: rgba(244, 63, 94, 0.3);
-  border-color: rgba(248, 113, 113, 0.72);
-}
-
-.mark--absence {
-  color: #fff1f2;
-  background: rgba(225, 29, 72, 0.3);
-  border-color: rgba(251, 113, 133, 0.72);
-}
-
-.mark--valid-absence {
-  color: #e0f2fe;
-  background: rgba(14, 165, 233, 0.26);
-  border-color: rgba(125, 211, 252, 0.72);
-}
-
-.mark--electronic-absence {
-  color: #faf5ff;
-  background: rgba(168, 85, 247, 0.28);
-  border-color: rgba(216, 180, 254, 0.72);
-}
-
-.mark--credit,
-.mark--note,
-.mark--plain {
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
   color: var(--text);
-  background: color-mix(in srgb, var(--panel-alt) 60%, transparent);
-  border-color: color-mix(in srgb, var(--border) 58%, transparent);
+  font-size: 13.5px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
 
-.mark--empty {
-  color: color-mix(in srgb, var(--muted) 82%, transparent);
-  background: color-mix(in srgb, var(--panel-alt) 86%, transparent);
-  border-color: color-mix(in srgb, var(--border) 52%, transparent);
-  font-weight: 650;
+.btn:hover {
+  background: var(--surface-3);
+  border-color: var(--text-3);
 }
 
-.mark--ghost {
-  opacity: 0.46;
+.btn--primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-on);
 }
 
-.mark-legend {
+.btn--primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn--quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.btn--quiet:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.btn--icon {
+  width: 36px;
+  padding: 0;
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.field__label {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+
+.input,
+.select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+.input:hover,
+.select:hover {
+  border-color: var(--text-3);
+}
+
+.select {
+  appearance: none;
+  padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* ----- Оценки и статусы ----- */
+
+.grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.grade--excellent {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.grade--good {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.grade--ok {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.grade--bad,
+.grade--absence {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.grade--valid-absence {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.grade--electronic-absence {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.grade--plain {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.grade--empty {
+  background: transparent;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 560;
+  white-space: nowrap;
+}
+
+.badge--neutral {
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+
+.badge--success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.badge--warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.badge--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.badge--info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+/* Точка-маркер: значение читается не только по цвету. */
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ----- Метрики ----- */
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.metric {
+  padding: 13px 15px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.metric__label {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 0.88rem;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
 }
 
-.mark-legend span {
+.metric__value {
+  margin-top: 6px;
+  font-size: 24px;
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.metric__hint {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* ----- Пустые состояния и ошибки ----- */
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 38px 20px;
+  text-align: center;
+}
+
+.empty__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-3);
+}
+
+.empty__title {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.empty__text {
+  max-width: 44ch;
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+/* ----- Скелетон ----- */
+
+.skel {
+  background: var(--surface-3);
+  border-radius: var(--radius-sm);
+  animation: skel 1.4s ease-in-out infinite;
+}
+
+@keyframes skel {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    animation: none;
+  }
+
+  * {
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------
+   5. Таблицы
+   --------------------------------------------------------------- */
+
+.tablebox {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tablebox__scroll {
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  max-height: calc(100vh - 210px);
+}
+
+/* Подсказка у правого края, что таблица продолжается. */
+.tablebox::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--t);
+  background: linear-gradient(270deg, var(--surface), transparent);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+}
+
+.tablebox--more::after {
+  opacity: 1;
+}
+
+.dtable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13.5px;
+}
+
+.dtable th,
+.dtable td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.dtable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.dtable tbody tr {
+  transition: background var(--t-fast);
+}
+
+.dtable tbody tr:hover td {
+  background: var(--surface-2);
+}
+
+.dtable tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.dtable .num {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.dtable .wrap {
+  white-space: normal;
+}
+
+/* Закреплённые слева столбцы журнала. */
+.dtable .stick {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.dtable thead .stick {
+  z-index: 3;
+  background: var(--surface-2);
+}
+
+.dtable tbody tr:hover .stick {
+  background: var(--surface-2);
+}
+
+.col-idx {
+  left: 0;
+  width: 42px;
+  min-width: 42px;
+  text-align: center;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.col-name {
+  left: 42px;
+  width: 220px;
+  min-width: 220px;
+  white-space: normal;
+  font-weight: 550;
+}
+
+/* Пустой столбец в конце забирает лишнюю ширину, когда занятий мало:
+   иначе остаток делится между столбцами дат и они разъезжаются. */
+.col-filler {
+  width: auto;
+  min-width: 0;
+  padding: 0;
+}
+
+/* Журнал считается по заданным ширинам, а не по содержимому: только так
+   столбец с датой остаётся одинаковым и при одном занятии, и при тридцати.
+   Минимальная ширина собирается из числа занятий — когда их много, таблица
+   выходит за экран и прокручивается, а не сжимает столбцы. */
+.dtable--journal {
+  table-layout: fixed;
+  --w-idx: 42px;
+  --w-name: 220px;
+  --w-date: 52px;
+  --w-sum: 58px;
+  min-width: calc(
+    var(--w-idx) + var(--w-name) + (var(--cols, 1) * var(--w-date)) + (3 * var(--w-sum))
+  );
+}
+
+.dtable--journal .col-idx {
+  width: var(--w-idx);
+  min-width: var(--w-idx);
+}
+
+.dtable--journal .col-name {
+  left: var(--w-idx);
+  width: var(--w-name);
+  min-width: var(--w-name);
+}
+
+.dtable--journal .col-date {
+  width: var(--w-date);
+  min-width: var(--w-date);
+}
+
+.dtable--journal .col-sum {
+  width: var(--w-sum);
+  min-width: var(--w-sum);
+}
+
+/* Граница-тень справа от закреплённой части. */
+.col-name::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: -1px;
+  width: 1px;
+  background: var(--border);
+}
+
+.col-date {
+  width: 52px;
+  min-width: 52px;
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.col-sum {
+  width: 58px;
+  min-width: 58px;
+  text-align: center;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.datehead {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  line-height: 1.15;
+}
+
+.datehead__day {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.datehead__month {
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+.datehead__mark {
+  width: 4px;
+  height: 4px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Столбец итогов слегка отделён от дат. */
+.col-sum--first {
+  border-left: 1px solid var(--border);
+}
+
+.name-full {
+  display: inline;
+}
+
+.name-short {
+  display: none;
+}
+
+/* ---------------------------------------------------------------
+   6. Страницы
+   --------------------------------------------------------------- */
+
+/* ----- Панель фильтров над таблицей ----- */
+
+.filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.filters__grow {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.filters__note {
+  margin-left: auto;
+  padding-bottom: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ----- Легенда обозначений ----- */
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.legend__item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.mark-legend .mark {
-  min-width: 1.8rem;
-  min-height: 1.55rem;
-  padding: 0.12rem 0.38rem;
-  font-size: 0.82rem;
+/* ----- Список групп на главной ----- */
+
+.grouplist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
 }
 
-.lesson-cell .mark {
-  width: 100%;
-  max-width: 3.1rem;
-  margin: 0 auto;
+.groupcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
 }
 
-html[data-theme='light'] .mark {
-  box-shadow: 0 6px 16px rgba(32, 54, 94, 0.08);
+.groupcard:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
-/* Full-cell color mode for marks: the whole table cell is colored, not only the small badge.
-   Soft mode: flat transparent fills, no gradients. */
-.journal-table td.center-cell:has(.mark--excellent) {
-  color: #dcfce7;
-  background: rgba(34, 197, 94, 0.24);
-  border-color: rgba(74, 222, 128, 0.34);
+.groupcard__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 
-.journal-table td.center-cell:has(.mark--good) {
-  color: #dbeafe;
-  background: rgba(59, 130, 246, 0.24);
-  border-color: rgba(147, 197, 253, 0.34);
-}
-
-.journal-table td.center-cell:has(.mark--ok) {
-  color: #fef3c7;
-  background: rgba(245, 158, 11, 0.25);
-  border-color: rgba(251, 191, 36, 0.34);
-}
-
-.journal-table td.center-cell:has(.mark--bad),
-.journal-table td.center-cell:has(.mark--absence) {
-  color: #ffe4e6;
-  background: rgba(244, 63, 94, 0.25);
-  border-color: rgba(251, 113, 133, 0.34);
-}
-
-.journal-table td.center-cell:has(.mark--valid-absence) {
-  color: #e0f2fe;
-  background: rgba(14, 165, 233, 0.22);
-  border-color: rgba(125, 211, 252, 0.34);
-}
-
-.journal-table td.center-cell:has(.mark--electronic-absence) {
-  color: #f3e8ff;
-  background: rgba(168, 85, 247, 0.24);
-  border-color: rgba(216, 180, 254, 0.34);
-}
-
-.journal-table td.center-cell:has(.mark--credit),
-.journal-table td.center-cell:has(.mark--note),
-.journal-table td.center-cell:has(.mark--plain) {
-  color: var(--text);
-  background: color-mix(in srgb, var(--panel-alt) 46%, transparent);
-  border-color: color-mix(in srgb, var(--border) 52%, transparent);
-}
-
-/* Keep blank cells quiet; only real marks/values fill the cell. */
-.journal-table td.center-cell:has(.mark--empty) {
-  background: color-mix(in srgb, var(--panel-alt) 46%, transparent);
-}
-
-/* In colored cells the text is enough: remove the old small oval badge. */
-.journal-table td.center-cell:has(.mark) .mark {
-  width: auto;
-  max-width: none;
+.groupcard__text {
   min-width: 0;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.groupcard__name {
+  font-size: 15px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupcard__meta {
+  font-size: 12.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupcard__arrow {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-3);
+  transition: color var(--t-fast), transform var(--t-fast);
+}
+
+.groupcard:hover .groupcard__arrow {
+  color: var(--primary);
+  transform: translateX(2px);
+}
+
+/* ----- Строки студентов (успеваемость, посещаемость) ----- */
+
+.rowlist {
+  display: grid;
+}
+
+.rowitem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 16px;
   border: 0;
-  border-radius: 0;
+  border-bottom: 1px solid var(--border);
   background: transparent;
-  box-shadow: none;
-  color: inherit;
-  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast);
 }
 
-.journal-table td.center-cell:has(.mark--empty) .mark {
-  color: color-mix(in srgb, var(--muted) 84%, transparent);
-  font-weight: 700;
+.rowitem:last-child {
+  border-bottom: 0;
 }
 
-.journal-table td.center-cell:has(.mark--ghost) {
-  background: color-mix(in srgb, var(--panel-alt) 50%, transparent);
+.rowitem:hover {
+  background: var(--surface-2);
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--excellent) {
-  color: #14532d;
-  background: rgba(34, 197, 94, 0.22);
+.rowitem__chev {
+  flex-shrink: 0;
+  color: var(--text-3);
+  transition: transform var(--t);
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--good) {
-  color: #1e3a8a;
-  background: rgba(59, 130, 246, 0.20);
+.rowitem__chev--open {
+  transform: rotate(90deg);
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--ok) {
-  color: #78350f;
-  background: rgba(245, 158, 11, 0.22);
+.rowitem__main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--bad),
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--absence) {
-  color: #7f1d1d;
-  background: rgba(244, 63, 94, 0.20);
+.rowitem__name {
+  font-size: 14px;
+  font-weight: 570;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--valid-absence) {
-  color: #075985;
-  background: rgba(14, 165, 233, 0.18);
+.rowitem__meta {
+  font-size: 12.5px;
+  color: var(--text-2);
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--electronic-absence) {
-  color: #581c87;
-  background: rgba(168, 85, 247, 0.18);
+.rowitem__aside {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--credit),
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--note),
-html[data-theme='light'] .journal-table td.center-cell:has(.mark--plain) {
-  color: var(--text);
-  background: color-mix(in srgb, var(--panel-alt) 46%, transparent);
+.rowpanel {
+  padding: 0 16px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+/* ----- Темы занятий ----- */
+
+.topics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.topic {
+  display: grid;
+  gap: 5px;
+  padding: 13px 15px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.topic__date {
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.topic__text {
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.topic__extra {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+/* ----- Полоса прогресса в успеваемости ----- */
+
+.bar {
+  position: relative;
+  width: 74px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.bar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width var(--t);
+}
+
+.bar__fill--good {
+  background: var(--success);
+}
+
+.bar__fill--low {
+  background: var(--danger);
+}
+
+/* ----- Вход по коду ----- */
+
+.auth {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.auth__card {
+  width: min(100%, 380px);
+  padding: 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.auth__logo {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 14px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-on);
+}
+
+.auth__title {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.auth__text {
+  margin: 5px 0 18px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.auth__error {
+  margin-top: 10px;
+  padding: 8px 11px;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* ----- Экран ошибки ----- */
+
+.errorpage {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.errorpage__card {
+  width: min(100%, 560px);
+  padding: 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.errorpage__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 14px;
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.errorpage__kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.errorpage__title {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.errorpage__text {
+  margin: 8px 0 14px;
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.errorpage__details {
+  display: block;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+
+/* ---------------------------------------------------------------
+   7. Адаптив
+   --------------------------------------------------------------- */
+
+/* Ноутбук: меню чуть уже. */
+@media (max-width: 1280px) {
+  :root {
+    --sidebar-w: 212px;
+  }
+}
+
+/* Планшет и телефон: меню уезжает в выдвижную панель. */
+@media (max-width: 1000px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 60;
+    width: 272px;
+    transform: translateX(-100%);
+    transition: transform var(--t);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    border: 0;
+    padding: 0;
+    background: rgba(10, 14, 20, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t);
+  }
+
+  .drawer-backdrop--open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .content {
+    padding: 16px;
+    padding-bottom: calc(var(--mobilenav-h) + 20px);
+  }
+
+  .tablebox__scroll {
+    max-height: none;
+  }
+}
+
+/* Телефон. */
+@media (max-width: 720px) {
+  body {
+    font-size: 14px;
+  }
+
+  .topbar {
+    padding: 0 14px;
+    gap: 8px;
+  }
+
+  .topbar__date,
+  .topbar__ident-text {
+    display: none;
+  }
+
+  /* В цепочке на телефоне оставляем только группу и текущий раздел. */
+  .topbar__crumbs > .topbar__crumbs:first-child {
+    display: none;
+  }
+
+  .page-head__title {
+    font-size: 20px;
+  }
+
+  .page-head__sub {
+    font-size: 13px;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric {
+    padding: 11px 12px;
+  }
+
+  .metric__value {
+    font-size: 20px;
+  }
+
+  .content {
+    padding: 14px;
+    padding-bottom: calc(var(--mobilenav-h) + 18px);
+  }
+
+  .card__body {
+    padding: 13px;
+  }
+
+  .filters__note {
+    margin-left: 0;
+    padding-bottom: 0;
+  }
+
+  .topics,
+  .grouplist {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Журнал: фамилии в коротком виде, колонки уже — влезает больше дат. */
+  .dtable {
+    font-size: 12.5px;
+  }
+
+  .dtable th,
+  .dtable td {
+    padding: 7px 8px;
+  }
+
+  .col-idx {
+    width: 30px;
+    min-width: 30px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .dtable--journal {
+    --w-idx: 30px;
+    --w-name: 118px;
+    --w-date: 44px;
+    --w-sum: 42px;
+  }
+
+  .dtable--journal .col-sum {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+
+  .name-full {
+    display: none;
+  }
+
+  .name-short {
+    display: inline;
+  }
+
+  /* Нижняя навигация вместо бокового меню. */
+  .mobilenav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    height: var(--mobilenav-h);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+
+  .mobilenav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    font-size: 10.5px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: color var(--t-fast);
+  }
+
+  .mobilenav__item--active {
+    color: var(--primary);
+  }
+}
+
+/* Очень узкий экран (от 320 px). */
+@media (max-width: 380px) {
+  .content {
+    padding: 11px;
+    padding-bottom: calc(var(--mobilenav-h) + 16px);
+  }
+
+  .metrics {
+    gap: 7px;
+  }
+
+  .dtable--journal {
+    --w-name: 100px;
+  }
+
+  .mobilenav__item {
+    font-size: 10px;
+  }
+}
+
+/* Кнопка меню видна только там, где боковая панель скрыта. */
+.topbar__burger {
+  display: none;
+}
+
+@media (max-width: 1000px) {
+  .topbar__burger {
+    display: inline-flex;
+  }
+}
+
+/* ---------------------------------------------------------------
+   8. Страница выбора группы (без бокового меню)
+   --------------------------------------------------------------- */
+
+.pickshell {
+  min-height: 100vh;
+}
+
+.pickshell__bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Содержимое шапки выравнивается по той же колонке, что и карточки ниже. */
+.pickshell__bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(1080px, 100%);
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 22px;
+}
+
+.pickshell__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pickshell__body {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 26px 22px 48px;
+}
+
+/* Поле с иконкой поиска внутри. */
+.inputwrap {
+  position: relative;
+  display: block;
+}
+
+.inputwrap > svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.inputwrap .input {
+  padding-left: 32px;
+}
+
+@media (max-width: 720px) {
+  .pickshell__bar-inner {
+    padding: 0 14px;
+  }
+
+  .pickshell__body {
+    padding: 18px 14px 32px;
+  }
+
+  .pickshell__bar .btn span,
+  .pickshell__brand .sidebar__brand-sub {
+    display: none;
+  }
 }
