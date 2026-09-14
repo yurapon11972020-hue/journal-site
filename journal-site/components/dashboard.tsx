@@ -456,6 +456,7 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
               onClick={() => setJournalTab('reports')}
             >
               Табели
+              <span className="tabs__count">{data.reportCards.length}</span>
             </button>
             <button
               type="button"
@@ -465,6 +466,7 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
               onClick={() => setJournalTab('subjects')}
             >
               Оценки по предметам
+              <span className="tabs__count">{subjects.length}</span>
             </button>
           </div>
 

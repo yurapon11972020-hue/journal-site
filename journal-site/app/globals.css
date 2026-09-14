@@ -458,17 +458,11 @@ p {
   padding: 22px;
 }
 
-/* Содержимое собрано в колонку по центру: на широком мониторе оно
-   не расползается от края до края. Журналу колонка шире — в неё
-   помещается больше дат. */
-.content--narrow > * {
-  max-width: 1080px;
-  margin-inline: auto;
-}
-
+/* Содержимое занимает всю доступную ширину: чем шире экран, тем больше
+   дат видно в журнале без прокрутки. */
+.content--narrow > *,
 .content--wide > * {
-  max-width: 1320px;
-  margin-inline: auto;
+  width: 100%;
 }
 
 /* ----- Нижняя навигация (телефон) ----- */
@@ -550,12 +544,10 @@ p {
   padding: 0;
 }
 
-/* Карточка по ширине содержимого и по центру колонки: узкая таблица
-   не должна прижиматься к левому краю и тянуть за собой пустое поле. */
+/* Раньше карточка ужималась по таблице; теперь растягивается вместе
+   со страницей, а лишнюю ширину забирает столбец с фамилиями. */
 .card--fit {
-  width: fit-content;
-  max-width: 100%;
-  margin-inline: auto;
+  width: 100%;
 }
 
 .btn {
@@ -984,18 +976,17 @@ p {
 
 /* Журнал считается по заданным ширинам, а не по содержимому: только так
    столбец с датой остаётся одинаковым и при одном занятии, и при тридцати.
-   Ширина собирается из числа занятий, поэтому таблица ровно такая, сколько
-   в ней данных: пустого поля справа не остаётся, а когда занятий много —
-   она выходит за экран и прокручивается, не сжимая столбцы. */
+   Таблица тянется на всю ширину, но лишнее место достаётся столбцу с
+   фамилиями, а не датам. Минимальная ширина собрана из числа занятий:
+   когда их много, таблица выходит за экран и прокручивается, а столбцы
+   не сжимаются. */
 .dtable--journal {
   table-layout: fixed;
   --w-idx: 42px;
   --w-name: 260px;
   --w-date: 52px;
   --w-sum: 58px;
-  width: calc(
-    var(--w-idx) + var(--w-name) + (var(--cols, 1) * var(--w-date)) + (3 * var(--w-sum))
-  );
+  width: 100%;
   min-width: calc(
     var(--w-idx) + var(--w-name) + (var(--cols, 1) * var(--w-date)) + (3 * var(--w-sum))
   );
@@ -1008,7 +999,8 @@ p {
 
 .dtable--journal .col-name {
   left: var(--w-idx);
-  width: var(--w-name);
+  /* auto в фиксированной раскладке = «забери весь остаток строки». */
+  width: auto;
   min-width: var(--w-name);
 }
 
@@ -1121,7 +1113,6 @@ p {
 .legend {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 14px;
   flex-wrap: wrap;
   margin-top: 10px;
@@ -1800,11 +1791,20 @@ code {
    9. Вкладки внутри раздела и кнопка возврата
    --------------------------------------------------------------- */
 
+/* Переключатель разделов журнала. Сделан заметным нарочно: это главный
+   орган управления на странице, а тонкое подчёркивание терялось. */
 .tabs {
-  display: flex;
-  gap: 2px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--border);
+  display: inline-flex;
+  gap: 4px;
+  /* Переключатель по ширине своих кнопок, а не во всю страницу:
+     иначе справа остаётся пустая серая полоса. */
+  width: auto;
+  max-width: 100%;
+  margin-bottom: 18px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-3);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -1814,37 +1814,48 @@ code {
 }
 
 .tabs__item {
-  position: relative;
-  padding: 9px 14px;
-  border: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: 1px solid transparent;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-2);
-  font-size: 14px;
-  font-weight: 550;
+  font-size: 14.5px;
+  font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  transition: color var(--t-fast), background var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
 }
 
 .tabs__item:hover {
+  background: var(--surface);
   color: var(--text);
-  background: var(--surface-3);
 }
 
-.tabs__item--active {
-  color: var(--primary);
-}
-
-/* Подчёркивание вместо заливки: раздел видно, но он не кричит. */
-.tabs__item--active::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
+.tabs__item--active,
+.tabs__item--active:hover {
   background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-on);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Счётчик внутри вкладки: сразу видно, сколько там записей. */
+.tabs__count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabs__item--active .tabs__count {
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--primary-on);
 }
 
 /* Кнопка возврата к списку групп. */
@@ -1883,8 +1894,15 @@ code {
     padding: 0;
   }
 
+  .tabs {
+    display: flex;
+    width: 100%;
+  }
+
   .tabs__item {
-    padding: 9px 11px;
+    flex: 1;
+    justify-content: center;
+    padding: 9px 10px;
     font-size: 13.5px;
   }
 
