@@ -973,6 +973,22 @@ async function refreshAllPublicJournals(options: { force?: boolean } = {}): Prom
   }
 }
 
+/**
+ * Проверка новых оценок после каждого обновления журналов.
+ *
+ * Импорт ленивый: lib/grade-watch тянет за собой разбор журнала, а тот —
+ * снова этот файл. Статический импорт замкнул бы круг.
+ */
+async function runGradeWatchSafely(): Promise<void> {
+  try {
+    const { runGradeWatch } = await import('@/lib/grade-watch');
+    await runGradeWatch();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[уведомления] Проход не удался: ${message}`);
+  }
+}
+
 function startPublicCacheRefreshLoop(): void {
   const runtime = getCacheRuntime();
   if (runtime.interval) {
@@ -984,9 +1000,11 @@ function startPublicCacheRefreshLoop(): void {
     if (!isWithinRefreshWindow()) {
       return;
     }
-    void refreshAllPublicJournals({ force: true }).catch((error) => {
-      console.error('[journal-cache] Не удалось обновить журнал:', error);
-    });
+    void refreshAllPublicJournals({ force: true })
+      .then(() => runGradeWatchSafely())
+      .catch((error) => {
+        console.error('[journal-cache] Не удалось обновить журнал:', error);
+      });
   }, intervalMs);
 
   runtime.interval.unref?.();

@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
+import { getSubscriptionStore, type Subscription } from '@/lib/subscriptions';
 import { answerCallback, editMessage, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
+import {
+  notifyMenuScreen,
+  notifyStudentScreen,
+  notifySubjectsScreen,
+  subjectNames,
+} from '@/lib/telegram-notify-views';
 import {
   errorScreen,
   groupMenuScreen,
@@ -46,7 +53,22 @@ async function loadGroupData(groups: JournalGroupRef[], gi: number): Promise<{ d
   return { data, gi: groups[gi] ? gi : 0, group };
 }
 
-async function buildScreen(action: string): Promise<BotScreen> {
+/** Подписки этого чата на эту группу. */
+async function chatSubscriptions(chatId: number, groupId: string): Promise<Subscription[]> {
+  const all = await getSubscriptionStore().listByChat(chatId);
+  return all.filter((item) => item.groupId === groupId);
+}
+
+async function findSubscription(
+  chatId: number,
+  groupId: string,
+  studentId: number,
+): Promise<Subscription | null> {
+  const list = await chatSubscriptions(chatId, groupId);
+  return list.find((item) => item.studentId === studentId) ?? null;
+}
+
+async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
   try {
     const groups = await getJournalGroups();
 
@@ -102,6 +124,72 @@ async function buildScreen(action: string): Promise<BotScreen> {
         const { data } = await loadGroupData(groups, gi);
         return subjectTopicsScreen(data, gi, a, b);
       }
+
+      // ---- уведомления об оценках ----
+      case 'w': {
+        const { data, group } = await loadGroupData(groups, gi);
+        return notifyMenuScreen(data, gi, await chatSubscriptions(chatId, group.id));
+      }
+      case 'wp': {
+        const { data, group } = await loadGroupData(groups, gi);
+        return notifyStudentScreen(data, gi, a, await findSubscription(chatId, group.id, a));
+      }
+      case 'wa': {
+        const { data, group } = await loadGroupData(groups, gi);
+        const student = data.students.find((item) => item.id === a);
+        if (student) {
+          // Пустой список предметов означает «все».
+          await getSubscriptionStore().save({
+            chatId,
+            groupId: group.id,
+            studentId: student.id,
+            studentName: student.name,
+            subjects: [],
+          });
+        }
+        return notifyMenuScreen(data, gi, await chatSubscriptions(chatId, group.id));
+      }
+      case 'ws': {
+        const { data, group } = await loadGroupData(groups, gi);
+        return notifySubjectsScreen(data, gi, a, await findSubscription(chatId, group.id, a));
+      }
+      case 'wt': {
+        const { data, group } = await loadGroupData(groups, gi);
+        const student = data.students.find((item) => item.id === a);
+        const name = subjectNames(data)[b];
+
+        if (student && name) {
+          const store = getSubscriptionStore();
+          const current = await findSubscription(chatId, group.id, a);
+          const chosen = new Set(current?.subjects ?? []);
+
+          if (chosen.has(name)) {
+            chosen.delete(name);
+          } else {
+            chosen.add(name);
+          }
+
+          if (chosen.size) {
+            await store.save({
+              chatId,
+              groupId: group.id,
+              studentId: student.id,
+              studentName: student.name,
+              subjects: [...chosen],
+            });
+          } else {
+            // Сняли последнюю галочку — это то же самое, что отписаться.
+            await store.remove(chatId, group.id, student.id);
+          }
+        }
+
+        return notifySubjectsScreen(data, gi, a, await findSubscription(chatId, group.id, a));
+      }
+      case 'wd': {
+        const { data, group } = await loadGroupData(groups, gi);
+        await getSubscriptionStore().remove(chatId, group.id, a);
+        return notifyMenuScreen(data, gi, await chatSubscriptions(chatId, group.id));
+      }
       default: {
         if (groups.length === 1) {
           const { data, gi: safeGi, group } = await loadGroupData(groups, 0);
@@ -148,7 +236,7 @@ export async function POST(request: Request) {
       await answerCallback(query.id);
 
       if (chatId && messageId) {
-        const screen = await buildScreen(action);
+        const screen = await buildScreen(action, chatId);
         const edited = await editMessage(chatId, messageId, screen.text, screen.buttons);
         if (!edited) {
           await sendMessage(chatId, screen.text, screen.buttons);
@@ -156,7 +244,7 @@ export async function POST(request: Request) {
       }
     } else if (update.message?.text) {
       const chatId = update.message.chat.id;
-      const screen = await buildScreen('start');
+      const screen = await buildScreen('start', chatId);
       await sendMessage(chatId, screen.text, screen.buttons);
     }
   } catch (error) {
