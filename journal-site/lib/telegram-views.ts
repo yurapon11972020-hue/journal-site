@@ -144,6 +144,7 @@ export function groupMenuScreen(data: JournalData, gi: number, totalGroups: numb
   }
 
   buttons.push([{ text: '👥 Студенты', callback_data: `s:${gi}` }]);
+  buttons.push([{ text: '🔔 Уведомления об оценках', callback_data: `w:${gi}` }]);
   buttons.push([
     { text: '🏆 Рейтинг', callback_data: `r:${gi}` },
     { text: '📚 Предметы', callback_data: `p:${gi}` },
