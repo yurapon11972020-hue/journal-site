@@ -40,7 +40,8 @@ const folderTree: Record<string, unknown> = {
 let cacheRoot = '';
 let downloads = 0;
 let listCalls = 0;
-let downloadFails = false;
+/** Сколько ближайших попыток скачивания должны провалиться. */
+let downloadFailures = 0;
 let downloadReturnsLoginPage = false;
 let apiIsDown = false;
 
@@ -84,8 +85,8 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
   }
 
   if (target.hostname === 'dl.test') {
-    if (downloadFails) {
-      downloadFails = false;
+    if (downloadFailures > 0) {
+      downloadFailures -= 1;
       return new Response('nope', { status: 503, statusText: 'Service Unavailable' });
     }
     if (downloadReturnsLoginPage) {
@@ -137,7 +138,7 @@ beforeEach(async () => {
   cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'journal-test-'));
   downloads = 0;
   listCalls = 0;
-  downloadFails = false;
+  downloadFailures = 0;
   downloadReturnsLoginPage = false;
   apiIsDown = false;
   resetRuntime();
@@ -266,10 +267,26 @@ describe('загрузка журнала группы', () => {
     await loadJournalFile(groups[0].filePath);
 
     await expireCachedCopy();
-    downloadFails = true;
+    // Валим все попытки, включая повторные: иначе проверялся бы повтор,
+    // а не запасная копия.
+    downloadFailures = 99;
 
     const stale = await loadJournalFile(groups[0].filePath);
     expect(markerOf(stale.buffer)).toContain(FILE_A);
+  });
+
+  it('разовая осечка сети не оставляет группу без журнала', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
+
+    // Первая попытка проваливается, как на Render в первые секунды
+    // после запуска. Прошлой копии ещё нет — спасает только повтор.
+    downloadFailures = 1;
+
+    const groups = await listJournalFiles();
+    const file = await loadJournalFile(groups[0].filePath);
+
+    expect(markerOf(file.buffer)).toContain(FILE_A);
+    expect(downloads).toBe(1);
   });
 
   it('страница входа вместо журнала не затирает рабочую копию', async () => {

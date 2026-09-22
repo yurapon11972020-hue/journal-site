@@ -426,11 +426,72 @@ async function listLocalJournalFiles(): Promise<JournalGroupRef[]> {
   return [buildGroupRef('local', defaultPath, 'journal.xlsx')];
 }
 
+/** Коды, при которых есть смысл постучаться ещё раз. */
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const FETCH_ATTEMPTS = 3;
+const FETCH_TIMEOUT_MS = 30_000;
+
+/** «fetch failed» само по себе ничего не объясняет — достаём настоящую причину. */
+function describeFetchError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const cause = error.cause;
+  const causeText =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === 'object' && cause !== null && 'code' in cause
+        ? String((cause as { code: unknown }).code)
+        : '';
+
+  return causeText ? `${error.message} (${causeText})` : error.message;
+}
+
+/**
+ * Запрос с повтором.
+ *
+ * На бесплатном Render сеть иногда отваливается на ровном месте — чаще
+ * всего в первые секунды после запуска сервиса. Раньше одна такая осечка
+ * пропускала группу до следующего круга, то есть на пять минут, а для
+ * только что добавленной группы — вообще до первой удачной попытки.
+ * Ошибки вида «нет такого файла» не повторяем: ссылка от этого не
+ * починится, а ждать пользователю придётся втрое дольше.
+ */
+async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        ...init,
+        cache: 'no-store',
+      });
+
+      if (!RETRYABLE_STATUS.has(response.status) || attempt === FETCH_ATTEMPTS) {
+        return response;
+      }
+
+      lastError = new Error(`${response.status} ${response.statusText}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === FETCH_ATTEMPTS) {
+        break;
+      }
+    }
+
+    console.warn(
+      `[yandex] Попытка ${attempt} из ${FETCH_ATTEMPTS} не удалась (${describeFetchError(lastError)}), повторяю.`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+  }
+
+  throw new Error(describeFetchError(lastError));
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    cache: 'no-store',
-  });
+  const response = await fetchWithRetry(url, init);
 
   const payload = (await response.json().catch(() => ({}))) as T & {
     message?: string;
@@ -462,7 +523,7 @@ async function fetchDownloadUrl(url: string, init?: RequestInit): Promise<string
 }
 
 async function fetchFileBuffer(downloadUrl: string): Promise<Buffer> {
-  const response = await fetch(downloadUrl, { cache: 'no-store' });
+  const response = await fetchWithRetry(downloadUrl);
 
   if (!response.ok) {
     throw new Error(`Не удалось скачать файл журнала: ${response.status} ${response.statusText}`);
