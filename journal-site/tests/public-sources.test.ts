@@ -40,7 +40,10 @@ const folderTree: Record<string, unknown> = {
 let cacheRoot = '';
 let downloads = 0;
 let listCalls = 0;
-let downloadFails = false;
+/** Сколько ближайших попыток скачивания должны провалиться. */
+let downloadFailures = 0;
+/** Яндекс не отвечает на запрос метаданных, но файл отдаёт. */
+let metaIsDown = false;
 let downloadReturnsLoginPage = false;
 let apiIsDown = false;
 
@@ -72,6 +75,9 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
 
   if (target.pathname === '/v1/disk/public/resources') {
     listCalls += 1;
+    if (metaIsDown) {
+      return json({ description: 'Service Unavailable' }, 503);
+    }
     if (key === FOLDER) {
       const node = folderTree[innerPath];
       return node ? json(node) : json({ name: path.posix.basename(innerPath), type: 'file' });
@@ -84,8 +90,8 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
   }
 
   if (target.hostname === 'dl.test') {
-    if (downloadFails) {
-      downloadFails = false;
+    if (downloadFailures > 0) {
+      downloadFailures -= 1;
       return new Response('nope', { status: 503, statusText: 'Service Unavailable' });
     }
     if (downloadReturnsLoginPage) {
@@ -97,7 +103,13 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
     }
     downloads += 1;
     const workbook = workbookFor(`${target.searchParams.get('k')}::${target.searchParams.get('p')}`);
-    return new Response(new Uint8Array(workbook));
+    const name = fileNames[target.searchParams.get('k') ?? ''] ?? 'journal.xlsx';
+
+    // Яндекс присылает имя файла вместе со скачиванием, кириллицу —
+    // в процентной кодировке через filename*.
+    return new Response(new Uint8Array(workbook), {
+      headers: { 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` },
+    });
   }
 
   throw new Error(`Неожиданный запрос в тесте: ${input}`);
@@ -137,7 +149,8 @@ beforeEach(async () => {
   cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'journal-test-'));
   downloads = 0;
   listCalls = 0;
-  downloadFails = false;
+  downloadFailures = 0;
+  metaIsDown = false;
   downloadReturnsLoginPage = false;
   apiIsDown = false;
   resetRuntime();
@@ -170,7 +183,7 @@ describe('список групп из публичных ссылок', () => {
     const groups = await listJournalFiles();
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].groupName).toBe('ИСиП-25-9');
+    expect(groups[0].groupName).toBe('ИСиП-25/9');
   });
 
   it('несколько ссылок дают несколько групп, названия можно задать вручную', async () => {
@@ -196,7 +209,7 @@ describe('список групп из публичных ссылок', () => {
     const groups = await listJournalFiles();
 
     // Временный файл ~$ и текстовый файл не попадают, сортировка по названию.
-    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22-9', 'ИСиП-25-9', 'ПКС-24-9']);
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22/9', 'ИСиП-25/9', 'ПКС-24/9']);
   });
 
   it('папку и отдельную ссылку можно смешивать', async () => {
@@ -204,7 +217,7 @@ describe('список групп из публичных ссылок', () => {
 
     const groups = await listJournalFiles();
 
-    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22-9', 'ИСиП-25-9', 'ПКС-24-9', 'Прошлый год']);
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22/9', 'ИСиП-25/9', 'ПКС-24/9', 'Прошлый год']);
   });
 
   it('список групп берётся из кэша, пока не истёк интервал', async () => {
@@ -230,8 +243,8 @@ describe('загрузка журнала группы', () => {
     const groups = await listJournalFiles();
     const byName = new Map(groups.map((group) => [group.groupName, group]));
 
-    const newYear = await loadJournalFile(byName.get('ИСиП-25-9')!.filePath);
-    const lastYear = await loadJournalFile(byName.get('ИСиП-24-9')!.filePath);
+    const newYear = await loadJournalFile(byName.get('ИСиП-25/9')!.filePath);
+    const lastYear = await loadJournalFile(byName.get('ИСиП-24/9')!.filePath);
 
     expect(markerOf(newYear.buffer)).toContain(FILE_A);
     expect(markerOf(lastYear.buffer)).toContain(FILE_B);
@@ -266,10 +279,42 @@ describe('загрузка журнала группы', () => {
     await loadJournalFile(groups[0].filePath);
 
     await expireCachedCopy();
-    downloadFails = true;
+    // Валим все попытки, включая повторные: иначе проверялся бы повтор,
+    // а не запасная копия.
+    downloadFailures = 99;
 
     const stale = await loadJournalFile(groups[0].filePath);
     expect(markerOf(stale.buffer)).toContain(FILE_A);
+  });
+
+  it('разовая осечка сети не оставляет группу без журнала', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
+
+    // Первая попытка проваливается, как на Render в первые секунды
+    // после запуска. Прошлой копии ещё нет — спасает только повтор.
+    downloadFailures = 1;
+
+    const groups = await listJournalFiles();
+    const file = await loadJournalFile(groups[0].filePath);
+
+    expect(markerOf(file.buffer)).toContain(FILE_A);
+    expect(downloads).toBe(1);
+  });
+
+  it('без ответа на метаданные имя берётся из скачанного файла', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
+    metaIsDown = true;
+
+    // Пока файл не скачан, известен только хвост ссылки.
+    const before = await listJournalFiles();
+    expect(before[0].fileName).toBe('aaaaaaaaaaaaaa.xlsx');
+
+    await loadJournalFile(before[0].filePath);
+
+    // Скачивание принесло настоящее имя в заголовке ответа.
+    const after = await listJournalFiles();
+    expect(after[0].fileName).toBe('ИСиП-25-9.xlsx');
+    expect(after[0].groupName).toBe('ИСиП-25/9');
   });
 
   it('страница входа вместо журнала не затирает рабочую копию', async () => {

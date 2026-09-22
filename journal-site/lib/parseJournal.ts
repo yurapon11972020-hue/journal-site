@@ -1,5 +1,7 @@
 import * as XLSX from 'xlsx';
 
+import { filenameToGroupName } from '@/lib/group-files';
+import { formatGroupName, looksLikeGroupName, pickGroupName } from '@/lib/group-name';
 import type {
   AbsenceSummary,
   GradeEntry,
@@ -30,23 +32,23 @@ interface SheetLessonColumn {
 }
 
 
+/**
+ * Один и тот же предмет в табеле и на своём листе называется по-разному:
+ * на листе преподаватель пишет короткое рабочее название, в табеле стоит
+ * полное из учебного плана. Справочник нужен, только чтобы понять, что это
+ * один предмет, и не показать его в табеле дважды.
+ *
+ * Названия при показе не подменяются: на сайте должно быть написано ровно
+ * то же, что в журнале, — иначе студент не находит свой предмет.
+ */
 const SUBJECT_ALIASES: Record<string, string> = {
   'разработка кода ис': 'разработка программных модулей',
   'тестирование информационных систем': 'обеспечение качества функционирования компьютерных систем',
 };
 
-const SUBJECT_DISPLAY_ALIASES: Record<string, string> = {
-  'Разработка кода ИС': 'Разработка программных модулей',
-  'Тестирование информационных систем': 'Обеспечение качества функционирования компьютерных систем',
-};
-
 function normalizeSubjectKey(value: unknown): string {
   const normalized = normalizeName(value);
   return SUBJECT_ALIASES[normalized] ?? normalized;
-}
-
-function normalizeSubjectDisplayName(value: string): string {
-  return SUBJECT_DISPLAY_ALIASES[value] ?? value;
 }
 
 function roundTo(value: number, digits = 2): number {
@@ -129,6 +131,43 @@ function getCell(sheet: XLSX.WorkSheet, row: number, col: number): XLSX.CellObje
 function getCellValue(sheet: XLSX.WorkSheet, row: number, col: number): unknown {
   const cell = getCell(sheet, row, col);
   return cell?.v ?? null;
+}
+
+/**
+ * Чтение клетки без «растекания» объединений.
+ *
+ * В объединённой области значение лежит только в левой верхней клетке,
+ * остальные пусты. Для шапки растекание полезно: «Сентябрь» объединён
+ * на весь месяц, и каждому столбцу нужен этот месяц. А вот в теле таблицы
+ * оно врёт: широкая объединённая строка (итоговый блок «ПЛАН/ФАКТ»,
+ * подпись с учебным годом) повторяла бы своё значение в каждом столбце
+ * студента — отсюда брались ряды вида «26/27-Д26/27-Д26/27-Д…».
+ * Оценки, фамилии и номера всегда живут в своей собственной клетке,
+ * поэтому читаются только напрямую.
+ */
+function getOwnCellValue(sheet: XLSX.WorkSheet, row: number, col: number): unknown {
+  const cell = getDirectCell(sheet, row, col);
+  return cell?.v ?? null;
+}
+
+/**
+ * Объединение, которое начинается ровно в этой клетке.
+ *
+ * Нужно, чтобы нарисовать на сайте такую же широкую клетку, как в Excel:
+ * преподаватель объединяет несколько дат и пишет поверх них одну пометку.
+ */
+function getMergeStartingAt(sheet: XLSX.WorkSheet, row: number, col: number): XLSX.Range | undefined {
+  return sheet['!merges']?.find((merge) => merge.s.r === row - 1 && merge.s.c === col - 1);
+}
+
+function getOwnCellText(sheet: XLSX.WorkSheet, row: number, col: number): string {
+  const cell = getDirectCell(sheet, row, col);
+
+  if (!cell) {
+    return '';
+  }
+
+  return cell.w ? normalizeText(cell.w) : normalizeText(cell.v);
 }
 
 function getCellText(sheet: XLSX.WorkSheet, row: number, col: number): string {
@@ -313,12 +352,17 @@ function collectNumberedRows(sheet: XLSX.WorkSheet): Array<{ row: number; name: 
   const range = XLSX.utils.decode_range(ref);
   const rows: Array<{ row: number; name: string }> = [];
 
-  for (let row = 1; row <= range.e.r + 1; row += 1) {
-    if (!isStudentNumber(getCellValue(sheet, row, 1))) {
+  // Ниже блока с темами занятий студентов уже нет: там свои нумерованные
+  // строки («1. Значение информации»), и без этой границы темы попадали
+  // в список группы как студенты.
+  const lastRow = findTopicHeaderRow(sheet, range.e.r + 1) ?? range.e.r + 1;
+
+  for (let row = 1; row <= lastRow; row += 1) {
+    if (!isStudentNumber(getOwnCellValue(sheet, row, 1))) {
       continue;
     }
 
-    const name = getCellText(sheet, row, 2);
+    const name = getOwnCellText(sheet, row, 2);
     if (!name) {
       continue;
     }
@@ -329,31 +373,13 @@ function collectNumberedRows(sheet: XLSX.WorkSheet): Array<{ row: number; name: 
   return rows;
 }
 
-function looksLikeGroupName(value: string): boolean {
-  const normalized = normalizeSpaces(value);
-  if (!normalized) {
-    return false;
-  }
-
-  const hasDigits = /\d{2}\s*[/-]\s*\d/.test(normalized) || /\d{2}\s*\/\s*\d/.test(normalized);
-  const hasLetters = /[А-Яа-яA-Za-z]/.test(normalized);
-  return hasDigits && hasLetters;
-}
-
-function formatGroupName(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
-  let normalized = normalizeSpaces(value)
-    .replace(/\s*\/\s*/g, '/')
-    .replace(/\s*\-\s*/g, '-')
-    .replace(/([А-Яа-яA-Za-z\)]+)\s+(\d{2}\/\d)/, '$1-$2');
-
-  normalized = normalized.replace(/^ИСиП\b/i, 'ИСиП');
-  return normalized;
-}
-
+/**
+ * Ищет название группы в шапке листа.
+ *
+ * Читает клетки напрямую: подпись с учебным годом часто объединена
+ * на всю ширину листа, и при обычном чтении она «растекалась» в любую
+ * клетку шапки — журнал получал имя вроде «26/27-Д».
+ */
 function detectGroupName(workbook: XLSX.WorkBook): string | null {
   for (const sheetName of workbook.SheetNames) {
     if (EXCLUDED_SHEETS.has(sheetName)) {
@@ -361,17 +387,14 @@ function detectGroupName(workbook: XLSX.WorkBook): string | null {
     }
 
     const sheet = workbook.Sheets[sheetName];
-    const candidates = [
-      getCellText(sheet, 3, 1),
-      getCellText(sheet, 3, 2),
-      getCellText(sheet, 3, 3),
-      getCellText(sheet, 2, 1),
-      getCellText(sheet, 1, 1),
-    ];
 
-    const match = candidates.find((candidate) => looksLikeGroupName(candidate));
-    if (match) {
-      return formatGroupName(match);
+    for (let row = 1; row <= 6; row += 1) {
+      for (let col = 1; col <= 4; col += 1) {
+        const candidate = getOwnCellText(sheet, row, col);
+        if (looksLikeGroupName(candidate)) {
+          return formatGroupName(candidate);
+        }
+      }
     }
   }
 
@@ -488,11 +511,11 @@ function detectSubjectName(sheet: XLSX.WorkSheet, fallback: string): string {
 
   for (const candidate of candidates) {
     if (candidate && !isPlaceholderSubjectName(candidate)) {
-      return normalizeSubjectDisplayName(candidate);
+      return candidate;
     }
   }
 
-  return normalizeSubjectDisplayName(fallback);
+  return fallback;
 }
 
 function detectTeacherName(sheet: XLSX.WorkSheet): string | null {
@@ -541,7 +564,7 @@ function buildLessonColumns(
     }
 
     const sampleValues = rosterRows
-      .map((row) => getCellValue(sheet, row, col))
+      .map((row) => getOwnCellValue(sheet, row, col))
       .filter((value) => !isNil(value) && normalizeText(value) !== '');
 
     const hasMeaningfulValue = sampleValues.length > 0;
@@ -577,6 +600,17 @@ function isTopicHeaderRow(sheet: XLSX.WorkSheet, row: number): boolean {
   return col1 === 'дата' && (col2.includes('тема') || col2.includes('дз'));
 }
 
+/** Строка «Дата | Тема занятия», с которой начинается блок тем. */
+function findTopicHeaderRow(sheet: XLSX.WorkSheet, lastRow: number): number | null {
+  for (let row = 1; row <= lastRow; row += 1) {
+    if (isTopicHeaderRow(sheet, row)) {
+      return row;
+    }
+  }
+
+  return null;
+}
+
 function parseLessonTopics(sheet: XLSX.WorkSheet): LessonTopic[] {
   const ref = sheet['!ref'];
   if (!ref) {
@@ -584,14 +618,7 @@ function parseLessonTopics(sheet: XLSX.WorkSheet): LessonTopic[] {
   }
 
   const range = XLSX.utils.decode_range(ref);
-  let headerRow: number | null = null;
-
-  for (let row = 1; row <= range.e.r + 1; row += 1) {
-    if (isTopicHeaderRow(sheet, row)) {
-      headerRow = row;
-      break;
-    }
-  }
+  const headerRow = findTopicHeaderRow(sheet, range.e.r + 1);
 
   if (!headerRow) {
     return [];
@@ -603,7 +630,10 @@ function parseLessonTopics(sheet: XLSX.WorkSheet): LessonTopic[] {
   for (let row = headerRow + 1; row <= range.e.r + 1; row += 1) {
     const dateLabel = getCellText(sheet, row, 1);
     const topic = getCellText(sheet, row, 2);
-    const extraParts = [getCellText(sheet, row, 3), getCellText(sheet, row, 4)].filter(Boolean);
+    // Доп. колонки читаем напрямую: если тема объединена на несколько
+    // столбцов, при обычном чтении она повторилась бы в «extra».
+    const extraParts = [getOwnCellText(sheet, row, 3), getOwnCellText(sheet, row, 4)]
+      .filter((part) => part && part !== topic && part !== dateLabel);
 
     if (!dateLabel && !topic && extraParts.length === 0) {
       blankStreak += 1;
@@ -645,6 +675,35 @@ function buildBlankSubject(sheetName: string, subjectName: string, teacherName: 
   };
 }
 
+/**
+ * Сколько столбцов занятий накрывает объединение, начинающееся в этой клетке.
+ *
+ * Считаем не столбцы Excel, а столбцы таблицы на сайте: между датами
+ * попадаются итоговые столбцы, которые в журнал не выводятся.
+ */
+function countCoveredLessons(
+  sheet: XLSX.WorkSheet,
+  row: number,
+  col: number,
+  lessonColumns: SheetLessonColumn[],
+  position: number,
+): number {
+  const merge = getMergeStartingAt(sheet, row, col);
+  if (!merge || merge.e.c <= merge.s.c) {
+    return 1;
+  }
+
+  let span = 1;
+  for (let next = position + 1; next < lessonColumns.length; next += 1) {
+    if (lessonColumns[next].index - 1 > merge.e.c) {
+      break;
+    }
+    span += 1;
+  }
+
+  return span;
+}
+
 function parseStudentSubject(
   sheet: XLSX.WorkSheet,
   row: number | null,
@@ -665,12 +724,25 @@ function parseStudentSubject(
   const numericGrades: number[] = [];
   const absences: AbsenceSummary = { valid: 0, invalid: 0 };
 
-  for (const lesson of lessonColumns) {
-    const rawValue = getCellValue(sheet, row, lesson.index);
-    const stringValue = getCellText(sheet, row, lesson.index);
+  // Столбцы, накрытые объединением слева: их значение уже учтено,
+  // и отдельными клетками они не выводятся.
+  let coveredUntil = -1;
+
+  for (const [position, lesson] of lessonColumns.entries()) {
+    if (position <= coveredUntil) {
+      continue;
+    }
+
+    const rawValue = getOwnCellValue(sheet, row, lesson.index);
+    const stringValue = getOwnCellText(sheet, row, lesson.index);
 
     if (!stringValue) {
       continue;
+    }
+
+    const span = countCoveredLessons(sheet, row, lesson.index, lessonColumns, position);
+    if (span > 1) {
+      coveredUntil = position + span - 1;
     }
 
     if (isValidAbsence(rawValue)) {
@@ -692,6 +764,7 @@ function parseStudentSubject(
       dayLabel: lesson.dayLabel,
       label: lesson.label,
       value: stringValue,
+      ...(span > 1 ? { span } : {}),
     });
   }
 
@@ -1026,7 +1099,10 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
   const reportCards = parseReportCards(workbook, students);
 
   return {
-    groupName: roster.groupName,
+    // Название группы решается в одном месте: главнее шапка журнала,
+    // имя файла с Диска — запасной вариант. Подробности в lib/group-name.
+    groupName:
+      pickGroupName(fileInfo.groupNameHint ?? filenameToGroupName(fileInfo.fileName ?? ''), roster.groupName) || null,
     source: fileInfo.source,
     // Наружу отдаём только вид источника: внутренний путь кэша и публичная
     // ссылка на Яндекс.Диск не должны попадать в ответ /api/journal.

@@ -6,6 +6,12 @@ export interface GradeEntry {
   dayLabel: string | null;
   label: string;
   value: string;
+  /**
+   * Сколько столбцов занятий занимает клетка.
+   * Больше единицы — в Excel клетки объединены, и на сайте они тоже
+   * рисуются одной широкой клеткой, а не значением плюс прочерки.
+   */
+  span?: number;
 }
 
 export interface AbsenceSummary {

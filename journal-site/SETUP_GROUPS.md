@@ -33,7 +33,7 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 
    | Key | Value |
    |---|---|
-   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw` |
+   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA` |
 
 4. **Старую переменную `YANDEX_DISK_PUBLIC_URL` (без `S` на конце) удали** — кнопка с корзиной справа от строки.
    Если её оставить, ничего не сломается: она просто игнорируется, пока задана `YANDEX_DISK_PUBLIC_URLS`. Но чтобы потом не путаться, лучше удалить.
@@ -82,7 +82,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 2. Допиши ссылку через запятую:
 
    ```env
-   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, https://disk.yandex.ru/i/WtnnnWnxsUUoZw, https://disk.yandex.ru/i/kORWvg2JaCqGQw, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
+   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, https://disk.yandex.ru/i/WtnnnWnxsUUoZw, https://disk.yandex.ru/i/kORWvg2JaCqGQw, https://disk.yandex.ru/i/mzbfhA6hE_MWSA, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
    ```
 
 3. **Save Changes** → дождись **Live** → проверь `/api/groups`.
@@ -187,7 +187,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { AbsenceBadge, GradeBadge } from '@/components/ui';
 import type { GradeEntry } from '@/lib/types';
@@ -89,6 +89,81 @@ function useJournalLayout(
 }
 
 /**
+ * Сколько столбцов нужно таблице.
+ *
+ * Объединённая пометка занимает столько дат, сколько их накрыто в Excel,
+ * даже если оценок по этим датам ещё нет и своих столбцов у них нет.
+ * Без этого широкой клетке некуда развернуться, и на телефоне приказ
+ * о переводе снова ужимался бы в одну клетку шириной в 40 пикселей.
+ */
+function countRequiredColumns(rows: JournalRow[], columns: JournalColumn[]): number {
+  let required = columns.length;
+
+  for (const row of rows) {
+    for (const [index, column] of columns.entries()) {
+      const span = row.gradeByColumn.get(column.key)?.span ?? 1;
+      required = Math.max(required, index + span);
+    }
+  }
+
+  return required;
+}
+
+/**
+ * Клетки одной строки студента с учётом объединений из Excel.
+ *
+ * Обычная оценка занимает одну клетку. Если преподаватель объединил
+ * несколько дат и написал поверх них пометку — приказ о переводе,
+ * практику, — на сайте это тоже одна широкая клетка: раньше пометка
+ * либо повторялась в каждом столбце, либо ютилась в одном узком,
+ * а рядом стояли прочерки.
+ *
+ * Пометка растягивается и на пустые клетки справа: в журнале под неё
+ * отведены даты, которых ещё не было, и столбцов с оценками там нет —
+ * иначе широкой клетке было бы некуда развернуться.
+ */
+function buildRowCells(row: JournalRow, columns: JournalColumn[], blanks: number) {
+  const cells = [];
+  const total = columns.length + blanks;
+
+  for (let index = 0; index < total; ) {
+    const column = columns[index];
+
+    if (!column) {
+      cells.push(<td className="col-date col-date--blank" key={`${row.studentId}-blank-${index}`} />);
+      index += 1;
+      continue;
+    }
+
+    const grade = row.gradeByColumn.get(column.key);
+    const span = Math.min(Math.max(grade?.span ?? 1, 1), total - index);
+    const merged = span > 1;
+
+    cells.push(
+      <td
+        className={merged ? 'col-date col-date--merged' : 'col-date'}
+        colSpan={merged ? span : undefined}
+        key={`${row.studentId}-${column.key}`}
+      >
+        {!grade ? (
+          <span className="grade grade--empty">—</span>
+        ) : merged ? (
+          <span className="mergednote" title={`${row.studentName} · ${column.label}`}>
+            {grade.value}
+          </span>
+        ) : (
+          <GradeBadge value={grade.value} title={`${row.studentName} · ${column.label}`} />
+        )}
+      </td>,
+    );
+
+    index += span;
+  }
+
+  return cells;
+}
+
+/**
  * Основная таблица журнала: студенты по строкам, даты занятий по столбцам.
  *
  * Шапка и первые два столбца закреплены, поэтому видно, чья это строка
@@ -105,9 +180,13 @@ export default function JournalTable({
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
-  const { blanks, zoom, width } = useJournalLayout(tableRef, boxRef, columns.length);
+  const requiredColumns = useMemo(() => countRequiredColumns(rows, columns), [rows, columns]);
+  const { blanks, zoom, width } = useJournalLayout(tableRef, boxRef, requiredColumns);
 
-  const blankKeys = Array.from({ length: blanks }, (_, index) => `blank-${index}`);
+  // Пустые клетки: и те, что зарезервированы под объединения,
+  // и те, которыми таблица добирается до края экрана.
+  const filler = requiredColumns - columns.length + blanks;
+  const blankKeys = Array.from({ length: filler }, (_, index) => `blank-${index}`);
 
   return (
     <div className="tablebox">
@@ -169,21 +248,7 @@ export default function JournalTable({
                   <span className="name-full">{row.studentName}</span>
                   <span className="name-short">{row.shortName}</span>
                 </th>
-                {columns.map((column) => {
-                  const grade = row.gradeByColumn.get(column.key);
-                  return (
-                    <td className="col-date" key={`${row.studentId}-${column.key}`}>
-                      {grade ? (
-                        <GradeBadge value={grade.value} title={`${row.studentName} · ${column.label}`} />
-                      ) : (
-                        <span className="grade grade--empty">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-                {blankKeys.map((key) => (
-                  <td className="col-date col-date--blank" key={`${row.studentId}-${key}`} />
-                ))}
+                {buildRowCells(row, columns, filler)}
                 <td className="col-sum col-sum--first">
                   <GradeBadge value={row.average} />
                 </td>

@@ -12,6 +12,23 @@
 4. старые копии удаляются, чтобы не забивать память;
 5. после перезапуска непостоянного сервера, например Render, файл снова скачивается при старте или первом запросе.
 
+## 0. Новый компьютер — с нуля
+
+Три команды, больше ничего делать не нужно:
+
+```bash
+git clone https://github.com/yurapon11972020-hue/journal-site.git
+cd journal-site/journal-site
+npm install && npm run setup && npm run dev
+```
+
+`npm run setup` сам создаёт `.env.local` из шаблона со всеми шестью ссылками
+на журналы и печатает, чего не хватает. Существующий `.env.local` он не трогает.
+
+Секреты (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `DATABASE_URL`)
+в репозитории не лежат и для просмотра журнала не нужны — сайт откроется без них.
+На рабочем сервере они задаются в Render → Environment.
+
 ## 1. Что нужно для запуска
 
 - Node.js **20.9+**
@@ -29,7 +46,7 @@ npm install
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache
@@ -127,7 +144,7 @@ Environment variables на Render:
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=/tmp/journal-cache

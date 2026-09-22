@@ -983,6 +983,26 @@ p {
   background: transparent;
 }
 
+/* Объединённые в Excel клетки: одна широкая клетка вместо нескольких узких.
+   Ширину задаёт colspan, поэтому своей ширины у неё нет. */
+.dtable--journal .col-date--merged {
+  width: auto;
+  background: var(--surface-3);
+}
+
+.dtable--journal .mergednote {
+  display: block;
+  max-width: 100%;
+  padding: 0 4px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-2);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .dtable--journal .col-sum--first {
   border-left: 1px solid var(--border-strong);
 }
