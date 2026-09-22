@@ -124,6 +124,45 @@ describe('объединённые клетки', () => {
     expect(grades[0].span).toBe(4);
   });
 
+  it('приказ поверх тринадцати дат становится одной клеткой', () => {
+    // Реальный случай из журнала: у студента объединены E:Q и поверх них
+    // написан приказ о переводе. Месяц в строке 3 объединён на все даты,
+    // числа проставлены только у первых двух занятий.
+    const prikaz = 'Приказ о переводе № 24-26/27-ДК от «25» августа 2026 г';
+    const lessons = 13;
+
+    const rows: string[][] = [
+      ['', '', 'Психология общения'],
+      ['', '', ''],
+      ['ИСиП 24/2', 'Месяц', '9', ...Array<string>(lessons - 1).fill(''), 'Средний балл', 'Уваж.', 'Неуваж.'],
+      ['№', 'Число', '5', '19', ...Array<string>(lessons - 2).fill(''), '', '', ''],
+      ['1.', 'Ахметов Артём Рамилевич', 'н/у', '5', ...Array<string>(lessons - 2).fill(''), '', '1', '0'],
+      ['2.', 'Корнеев Андрей Александрович', '', '', prikaz, ...Array<string>(lessons - 3).fill(''), '', '0', '0'],
+    ];
+
+    const buffer = buildWorkbook({
+      'Психология общения': {
+        rows,
+        // Месяц объединён на все даты, приказ — с третьей даты до последней.
+        merges: [`C3:${XLSX.utils.encode_col(2 + lessons - 1)}3`, `E6:${XLSX.utils.encode_col(2 + lessons - 1)}6`],
+      },
+    });
+
+    const data = parseJournalWorkbook(buffer, fileInfo(buffer));
+    const [first, second] = data.students;
+
+    expect(data.students).toHaveLength(2);
+
+    // У первого студента обе оценки на своих местах.
+    expect(first.subjects[0].grades.map((grade) => grade.value)).toEqual(['н/у', '5']);
+
+    // У второго — одна клетка с полным текстом приказа на все 11 оставшихся дат.
+    const grades = second.subjects[0].grades;
+    expect(grades).toHaveLength(1);
+    expect(grades[0].value).toBe(prikaz);
+    expect(grades[0].span).toBe(lessons - 2);
+  });
+
   it('широкая подпись под таблицей не превращается в оценки', () => {
     const rows = subjectRows('ИСиП-25/9', [['5', '4', '3', '5']]);
     rows.push([], ['ПЛАН', '', '', '', '', '']);
