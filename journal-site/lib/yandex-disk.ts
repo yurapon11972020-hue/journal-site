@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { basenameFromFilePath, filenameToGroupName, groupPathToPublicId } from '@/lib/group-files';
+import { formatGroupName } from '@/lib/group-name';
 import { assertJournalFile } from '@/lib/journal-file-check';
 import type { JournalFileResult, JournalGroupRef, JournalSource } from '@/lib/types';
 
@@ -110,7 +111,9 @@ function buildGroupRef(source: JournalSource, filePath: string, fileName?: strin
   const resolvedFileName = fileName || basenameFromFilePath(filePath);
   return {
     id: groupPathToPublicId(filePath),
-    groupName: groupName?.trim() || filenameToGroupName(resolvedFileName),
+    // Список групп строится без разбора книги, так что здесь доступно
+    // только имя файла — приводим его к общему виду «ИСиП-24/1».
+    groupName: formatGroupName(groupName?.trim() || filenameToGroupName(resolvedFileName)),
     fileName: resolvedFileName,
     filePath,
     source,

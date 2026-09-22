@@ -170,7 +170,7 @@ describe('список групп из публичных ссылок', () => {
     const groups = await listJournalFiles();
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].groupName).toBe('ИСиП-25-9');
+    expect(groups[0].groupName).toBe('ИСиП-25/9');
   });
 
   it('несколько ссылок дают несколько групп, названия можно задать вручную', async () => {
@@ -196,7 +196,7 @@ describe('список групп из публичных ссылок', () => {
     const groups = await listJournalFiles();
 
     // Временный файл ~$ и текстовый файл не попадают, сортировка по названию.
-    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22-9', 'ИСиП-25-9', 'ПКС-24-9']);
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22/9', 'ИСиП-25/9', 'ПКС-24/9']);
   });
 
   it('папку и отдельную ссылку можно смешивать', async () => {
@@ -204,7 +204,7 @@ describe('список групп из публичных ссылок', () => {
 
     const groups = await listJournalFiles();
 
-    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22-9', 'ИСиП-25-9', 'ПКС-24-9', 'Прошлый год']);
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-22/9', 'ИСиП-25/9', 'ПКС-24/9', 'Прошлый год']);
   });
 
   it('список групп берётся из кэша, пока не истёк интервал', async () => {
@@ -230,8 +230,8 @@ describe('загрузка журнала группы', () => {
     const groups = await listJournalFiles();
     const byName = new Map(groups.map((group) => [group.groupName, group]));
 
-    const newYear = await loadJournalFile(byName.get('ИСиП-25-9')!.filePath);
-    const lastYear = await loadJournalFile(byName.get('ИСиП-24-9')!.filePath);
+    const newYear = await loadJournalFile(byName.get('ИСиП-25/9')!.filePath);
+    const lastYear = await loadJournalFile(byName.get('ИСиП-24/9')!.filePath);
 
     expect(markerOf(newYear.buffer)).toContain(FILE_A);
     expect(markerOf(lastYear.buffer)).toContain(FILE_B);

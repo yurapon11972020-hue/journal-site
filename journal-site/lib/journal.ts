@@ -44,10 +44,8 @@ function buildCacheKey(file: JournalFileResult): string {
 function parseAndNormalizeJournal(file: JournalFileResult): JournalData {
   const data = parseJournalWorkbook(file.buffer, file);
 
-  if (file.groupNameHint) {
-    data.groupName = file.groupNameHint;
-  }
-
+  // Название группы выбирает сам разборщик: ему видны и имя файла,
+  // и шапка журнала. Здесь больше ничего перетирать не нужно.
   return data;
 }
 
@@ -102,10 +100,34 @@ function warmFirstGroup(groups: JournalGroupRef[]): void {
   });
 }
 
+/**
+ * Название группы для карточки в списке.
+ *
+ * Список строится по именам файлов на Диске — саму книгу ради него
+ * не качают. Но если журнал уже разобран (его открывали или по нему
+ * проверялись оценки), берём название оттуда: карточка и сам журнал
+ * должны называться одинаково.
+ */
+function groupNameFromParsedCache(group: JournalGroupRef): string | null {
+  const cache = getRuntimeCache();
+
+  for (const [key, entry] of cache.parsed) {
+    if (key.startsWith(`${group.source}::${group.sourceDetails}::`) && entry.data.groupName) {
+      return entry.data.groupName;
+    }
+  }
+
+  return null;
+}
+
 export async function getJournalGroups(): Promise<JournalGroupRef[]> {
   const groups = await listJournalFiles();
   warmFirstGroup(groups);
-  return groups;
+
+  return groups.map((group) => {
+    const parsedName = groupNameFromParsedCache(group);
+    return parsedName ? { ...group, groupName: parsedName } : group;
+  });
 }
 
 export async function getJournalDataByPath(filePath?: string): Promise<JournalData> {
