@@ -13,6 +13,16 @@ interface ParsedJournalCacheEntry {
 interface JournalRuntimeCache {
   parsed: Map<string, ParsedJournalCacheEntry>;
   parsing: Map<string, Promise<JournalData>>;
+  /**
+   * Названия групп, узнанные при разборе.
+   *
+   * Живут отдельно от разобранных журналов и не вытесняются: журналов
+   * в памяти держится всего несколько, а групп больше, и вытесненная
+   * группа возвращалась в списке к имени файла. Получалось, что карточка
+   * и страница внутри называются по-разному. Строка занимает десятки байт,
+   * ради которых заводить вытеснение незачем.
+   */
+  names: Map<string, string>;
 }
 
 declare global {
@@ -32,6 +42,7 @@ function getRuntimeCache(): JournalRuntimeCache {
   globalThis.__journalRuntimeCache ??= {
     parsed: new Map<string, ParsedJournalCacheEntry>(),
     parsing: new Map<string, Promise<JournalData>>(),
+    names: new Map<string, string>(),
   };
 
   return globalThis.__journalRuntimeCache;
@@ -39,6 +50,11 @@ function getRuntimeCache(): JournalRuntimeCache {
 
 function buildCacheKey(file: JournalFileResult): string {
   return `${file.source}::${file.sourceDetails}::${file.fileName ?? ''}`;
+}
+
+/** Ключ группы без имени файла: по нему список групп ищет название. */
+function buildGroupKey(source: string, sourceDetails: string): string {
+  return `${source}::${sourceDetails}`;
 }
 
 function parseAndNormalizeJournal(file: JournalFileResult): JournalData {
@@ -70,6 +86,10 @@ async function getParsedJournalFromFile(file: JournalFileResult): Promise<Journa
         data,
         createdAt: Date.now(),
       });
+
+      if (data.groupName) {
+        cache.names.set(buildGroupKey(file.source, file.sourceDetails), data.groupName);
+      }
 
       while (cache.parsed.size > getParsedCacheLimit()) {
         const oldestKey = cache.parsed.keys().next().value;
@@ -104,20 +124,11 @@ function warmFirstGroup(groups: JournalGroupRef[]): void {
  * Название группы для карточки в списке.
  *
  * Список строится по именам файлов на Диске — саму книгу ради него
- * не качают. Но если журнал уже разобран (его открывали или по нему
- * проверялись оценки), берём название оттуда: карточка и сам журнал
- * должны называться одинаково.
+ * не качают. Но если журнал хоть раз разбирали, берём название оттуда:
+ * карточка и страница внутри должны называться одинаково.
  */
 function groupNameFromParsedCache(group: JournalGroupRef): string | null {
-  const cache = getRuntimeCache();
-
-  for (const [key, entry] of cache.parsed) {
-    if (key.startsWith(`${group.source}::${group.sourceDetails}::`) && entry.data.groupName) {
-      return entry.data.groupName;
-    }
-  }
-
-  return null;
+  return getRuntimeCache().names.get(buildGroupKey(group.source, group.sourceDetails)) ?? null;
 }
 
 export async function getJournalGroups(): Promise<JournalGroupRef[]> {
