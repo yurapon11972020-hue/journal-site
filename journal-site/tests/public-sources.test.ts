@@ -42,6 +42,8 @@ let downloads = 0;
 let listCalls = 0;
 /** Сколько ближайших попыток скачивания должны провалиться. */
 let downloadFailures = 0;
+/** Яндекс не отвечает на запрос метаданных, но файл отдаёт. */
+let metaIsDown = false;
 let downloadReturnsLoginPage = false;
 let apiIsDown = false;
 
@@ -73,6 +75,9 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
 
   if (target.pathname === '/v1/disk/public/resources') {
     listCalls += 1;
+    if (metaIsDown) {
+      return json({ description: 'Service Unavailable' }, 503);
+    }
     if (key === FOLDER) {
       const node = folderTree[innerPath];
       return node ? json(node) : json({ name: path.posix.basename(innerPath), type: 'file' });
@@ -98,7 +103,13 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
     }
     downloads += 1;
     const workbook = workbookFor(`${target.searchParams.get('k')}::${target.searchParams.get('p')}`);
-    return new Response(new Uint8Array(workbook));
+    const name = fileNames[target.searchParams.get('k') ?? ''] ?? 'journal.xlsx';
+
+    // Яндекс присылает имя файла вместе со скачиванием, кириллицу —
+    // в процентной кодировке через filename*.
+    return new Response(new Uint8Array(workbook), {
+      headers: { 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(name)}` },
+    });
   }
 
   throw new Error(`Неожиданный запрос в тесте: ${input}`);
@@ -139,6 +150,7 @@ beforeEach(async () => {
   downloads = 0;
   listCalls = 0;
   downloadFailures = 0;
+  metaIsDown = false;
   downloadReturnsLoginPage = false;
   apiIsDown = false;
   resetRuntime();
@@ -287,6 +299,22 @@ describe('загрузка журнала группы', () => {
 
     expect(markerOf(file.buffer)).toContain(FILE_A);
     expect(downloads).toBe(1);
+  });
+
+  it('без ответа на метаданные имя берётся из скачанного файла', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
+    metaIsDown = true;
+
+    // Пока файл не скачан, известен только хвост ссылки.
+    const before = await listJournalFiles();
+    expect(before[0].fileName).toBe('aaaaaaaaaaaaaa.xlsx');
+
+    await loadJournalFile(before[0].filePath);
+
+    // Скачивание принесло настоящее имя в заголовке ответа.
+    const after = await listJournalFiles();
+    expect(after[0].fileName).toBe('ИСиП-25-9.xlsx');
+    expect(after[0].groupName).toBe('ИСиП-25/9');
   });
 
   it('страница входа вместо журнала не затирает рабочую копию', async () => {

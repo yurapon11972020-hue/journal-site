@@ -48,6 +48,13 @@ interface PublicGroupSource {
   publicPath?: string;
   label?: string;
   fileName: string;
+  /**
+   * Имя не узнали у Яндекса, а собрали из хвоста ссылки.
+   * Такое имя нельзя считать настоящим: иначе группа так и остаётся
+   * «jr0lr00cUQp0FQ» — при скачивании код видит, что имя уже известно,
+   * и настоящее больше не спрашивает.
+   */
+  fileNameIsGuess?: boolean;
 }
 
 interface CachedJournalVersion {
@@ -330,6 +337,9 @@ function encodePublicGroupPath(group: PublicGroupSource): string {
     p: group.publicPath || '',
     n: group.fileName,
     l: group.label || '',
+    // Догадка это или настоящее имя — иначе при переходе по ссылке
+    // на группу пометка терялась, и настоящее имя не спрашивали.
+    g: group.fileNameIsGuess ? 1 : 0,
   });
 
   return `${PUBLIC_CACHE_PATH_PREFIX}${Buffer.from(payload, 'utf8').toString('base64url')}`;
@@ -343,7 +353,7 @@ function decodePublicGroupPath(filePath?: string): PublicGroupSource | null {
   try {
     const payload = JSON.parse(
       Buffer.from(filePath.slice(PUBLIC_CACHE_PATH_PREFIX.length), 'base64url').toString('utf8'),
-    ) as { k?: string; p?: string; n?: string; l?: string };
+    ) as { k?: string; p?: string; n?: string; l?: string; g?: number };
 
     if (!payload.k) {
       return null;
@@ -354,6 +364,7 @@ function decodePublicGroupPath(filePath?: string): PublicGroupSource | null {
       publicPath: payload.p || undefined,
       fileName: payload.n || 'journal.xlsx',
       label: payload.l || undefined,
+      ...(payload.g ? { fileNameIsGuess: true } : {}),
     };
   } catch {
     return null;
@@ -522,7 +533,41 @@ async function fetchDownloadUrl(url: string, init?: RequestInit): Promise<string
   return payload.href;
 }
 
-async function fetchFileBuffer(downloadUrl: string): Promise<Buffer> {
+/**
+ * Имя файла из заголовка ответа.
+ *
+ * Второй способ узнать, как файл называется на Диске, — на случай, когда
+ * запрос метаданных не прошёл. Яндекс присылает имя прямо со скачиванием,
+ * и для кириллицы это `filename*` в процентной кодировке.
+ */
+function fileNameFromContentDisposition(header: string | null): string | null {
+  if (!header) {
+    return null;
+  }
+
+  const encoded = header.match(/filename\*\s*=\s*[^']*'[^']*'([^;]+)/i);
+  if (encoded) {
+    try {
+      const decoded = decodeURIComponent(encoded[1].trim().replace(/^"|"$/g, ''));
+      if (decoded) {
+        return decoded;
+      }
+    } catch {
+      // Кодировка битая — пробуем обычный filename ниже.
+    }
+  }
+
+  const plain = header.match(/filename\s*=\s*"?([^";]+)"?/i);
+  return plain ? plain[1].trim() || null : null;
+}
+
+interface DownloadedFile {
+  buffer: Buffer;
+  /** Имя, под которым файл отдал Яндекс; null — заголовка не было. */
+  fileName: string | null;
+}
+
+async function fetchFileBuffer(downloadUrl: string): Promise<DownloadedFile> {
   const response = await fetchWithRetry(downloadUrl);
 
   if (!response.ok) {
@@ -530,7 +575,11 @@ async function fetchFileBuffer(downloadUrl: string): Promise<Buffer> {
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    fileName: fileNameFromContentDisposition(response.headers.get('content-disposition')),
+  };
 }
 
 function getPrivateToken(): string {
@@ -556,7 +605,7 @@ async function readFromPrivateYandexDisk(filePath?: string): Promise<JournalFile
     },
   });
 
-  const buffer = await fetchFileBuffer(href);
+  const { buffer } = await fetchFileBuffer(href);
 
   return {
     buffer,
@@ -669,7 +718,7 @@ async function readPublicResourceMeta(publicKey: string, publicPath?: string, li
   }
 }
 
-async function getPublicDownloadBuffer(publicKey: string, publicPath?: string): Promise<Buffer> {
+async function getPublicDownloadBuffer(publicKey: string, publicPath?: string): Promise<DownloadedFile> {
   const href = await fetchDownloadUrl(`${PUBLIC_DOWNLOAD_ENDPOINT}?${buildPublicParams(publicKey, publicPath).toString()}`);
   return fetchFileBuffer(href);
 }
@@ -677,8 +726,13 @@ async function getPublicDownloadBuffer(publicKey: string, publicPath?: string): 
 async function readFromPublicYandexDisk(): Promise<JournalFileResult> {
   const source = getPublicSources()[0];
   const meta = await readPublicResourceMeta(source.publicKey, source.publicPath);
-  const buffer = await getPublicDownloadBuffer(source.publicKey, source.publicPath);
-  const fileName = meta?.name || (source.publicPath ? basenameFromFilePath(source.publicPath) : 'public-journal.xlsx');
+  const downloaded = await getPublicDownloadBuffer(source.publicKey, source.publicPath);
+  const buffer = downloaded.buffer;
+  const fileName =
+    meta?.name ||
+    (source.publicPath ? basenameFromFilePath(source.publicPath) : '') ||
+    downloaded.fileName ||
+    'public-journal.xlsx';
 
   return {
     buffer,
@@ -797,17 +851,41 @@ async function resolvePublicGroupsFromNetwork(cached: PublicGroupsCacheMeta | nu
       }
     }
 
+    const knownName = meta?.name || (source.publicPath ? basenameFromFilePath(source.publicPath) : '');
+
     groups.push({
       publicKey: source.publicKey,
       publicPath: source.publicPath,
       label: source.label,
-      fileName:
-        meta?.name ||
-        (source.publicPath ? basenameFromFilePath(source.publicPath) : `${publicKeyHint(source.publicKey)}.xlsx`),
+      fileName: knownName || `${publicKeyHint(source.publicKey)}.xlsx`,
+      ...(knownName ? {} : { fileNameIsGuess: true }),
     });
   }
 
   return sortPublicGroups(dedupePublicGroups(groups)).slice(0, MAX_PUBLIC_GROUPS);
+}
+
+/**
+ * Подставляет имя, узнанное при скачивании.
+ *
+ * Когда Яндекс не отвечает на запрос метаданных, в имя попадает хвост
+ * ссылки — и группа называется «jr0lr00cUQp0FQ». Само скачивание при этом
+ * проходит и приносит настоящее имя в заголовке ответа; оно сохраняется
+ * рядом с файлом. Отсюда его и берём, пока метаданные снова не ответят.
+ */
+async function withLearnedFileName(group: PublicGroupSource): Promise<PublicGroupSource> {
+  if (!group.fileNameIsGuess) {
+    return group;
+  }
+
+  const meta = await readPublicCacheMeta(getGroupCacheDir(group));
+  const learned = meta?.versions?.at(-1)?.displayName?.trim();
+
+  if (!learned || learned === group.fileName) {
+    return group;
+  }
+
+  return { ...group, fileName: learned, fileNameIsGuess: false };
 }
 
 async function resolvePublicGroups(options: { force?: boolean } = {}): Promise<PublicGroupSource[]> {
@@ -935,16 +1013,12 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
   const now = new Date();
   const downloadedAt = now.toISOString();
   // Имя файла уже известно из списка групп — лишний запрос к API не нужен.
-  const knownFileName = group.fileName?.trim();
+  // Имя, собранное из хвоста ссылки, известным не считается: иначе группа
+  // навсегда останется «jr0lr00cUQp0FQ» — настоящее имя просто не спросят.
+  const knownFileName = group.fileNameIsGuess ? '' : group.fileName?.trim();
   const meta = knownFileName ? null : await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
-  const originalFileName = sanitizeFileName(knownFileName || meta?.name || 'journal.xlsx');
-  const extension = path.extname(originalFileName) || '.xlsx';
-  const displayName = originalFileName;
-  const cachedFileName = `journal-${timestampForFileName(now)}${extension}`;
-  const cachedFilePath = path.join(cacheDir, cachedFileName);
-  const tempFilePath = `${cachedFilePath}.tmp`;
 
-  const buffer = await getPublicDownloadBuffer(group.publicKey, group.publicPath).catch((error: unknown) => {
+  const downloaded = await getPublicDownloadBuffer(group.publicKey, group.publicPath).catch((error: unknown) => {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
       `${reason} Ссылка: ${describePublicTarget(group)}. ` +
@@ -952,9 +1026,22 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
         'Проверь, что публичный доступ к файлу включён и ссылка не была пересоздана.',
     );
   });
+  const buffer = downloaded.buffer;
+
   // Проверяем файл до того, как он заменит прошлую копию: по ссылке может
   // прийти страница входа вместо журнала, и она не должна затереть рабочие данные.
   assertJournalFile(buffer, describePublicTarget(group));
+
+  // Третий способ узнать имя — заголовок ответа на скачивание: он приходит
+  // даже тогда, когда запрос метаданных не прошёл.
+  const originalFileName = sanitizeFileName(
+    knownFileName || meta?.name || downloaded.fileName || group.fileName?.trim() || 'journal.xlsx',
+  );
+  const extension = path.extname(originalFileName) || '.xlsx';
+  const displayName = originalFileName;
+  const cachedFileName = `journal-${timestampForFileName(now)}${extension}`;
+  const cachedFilePath = path.join(cacheDir, cachedFileName);
+  const tempFilePath = `${cachedFilePath}.tmp`;
 
   await fs.writeFile(tempFilePath, buffer);
   await fs.rename(tempFilePath, cachedFilePath);
@@ -1148,7 +1235,11 @@ export async function listJournalFiles(): Promise<JournalGroupRef[]> {
       throw new Error('По указанным публичным ссылкам не найдено ни одного файла журнала.');
     }
 
-    return groups.map((group) =>
+    // Если имя собрано из хвоста ссылки, настоящее могло найтись при
+    // скачивании — тогда оно лежит в описании кэша этой группы.
+    const named = await Promise.all(groups.map((group) => withLearnedFileName(group)));
+
+    return named.map((group) =>
       buildGroupRef('yandex-public-cache', encodePublicGroupPath(group), group.fileName, group.label),
     );
   }
