@@ -32,23 +32,23 @@ interface SheetLessonColumn {
 }
 
 
+/**
+ * Один и тот же предмет в табеле и на своём листе называется по-разному:
+ * на листе преподаватель пишет короткое рабочее название, в табеле стоит
+ * полное из учебного плана. Справочник нужен, только чтобы понять, что это
+ * один предмет, и не показать его в табеле дважды.
+ *
+ * Названия при показе не подменяются: на сайте должно быть написано ровно
+ * то же, что в журнале, — иначе студент не находит свой предмет.
+ */
 const SUBJECT_ALIASES: Record<string, string> = {
   'разработка кода ис': 'разработка программных модулей',
   'тестирование информационных систем': 'обеспечение качества функционирования компьютерных систем',
 };
 
-const SUBJECT_DISPLAY_ALIASES: Record<string, string> = {
-  'Разработка кода ИС': 'Разработка программных модулей',
-  'Тестирование информационных систем': 'Обеспечение качества функционирования компьютерных систем',
-};
-
 function normalizeSubjectKey(value: unknown): string {
   const normalized = normalizeName(value);
   return SUBJECT_ALIASES[normalized] ?? normalized;
-}
-
-function normalizeSubjectDisplayName(value: string): string {
-  return SUBJECT_DISPLAY_ALIASES[value] ?? value;
 }
 
 function roundTo(value: number, digits = 2): number {
@@ -511,11 +511,11 @@ function detectSubjectName(sheet: XLSX.WorkSheet, fallback: string): string {
 
   for (const candidate of candidates) {
     if (candidate && !isPlaceholderSubjectName(candidate)) {
-      return normalizeSubjectDisplayName(candidate);
+      return candidate;
     }
   }
 
-  return normalizeSubjectDisplayName(fallback);
+  return fallback;
 }
 
 function detectTeacherName(sheet: XLSX.WorkSheet): string | null {

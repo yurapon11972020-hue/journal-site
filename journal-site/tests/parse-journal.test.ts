@@ -87,14 +87,29 @@ describe('parseJournalWorkbook', () => {
     expect(data.reportCards[0].rows.map((row) => row.subjectName)).toEqual(['Математика', 'Информатика']);
   });
 
-  it('переименовывает предметы по справочнику', () => {
+  it('показывает предмет так, как он назван в журнале', () => {
+    // В справочнике этот предмет стоит под полным названием из учебного
+    // плана, но на сайте должно быть написано то же, что на листе.
     const data = parse({
       students,
       marks,
       subjects: [{ name: 'Разработка кода ИС', teacher: 'Кузнецов Д. С.' }],
     });
 
-    expect(data.subjects[0].subjectName).toBe('Разработка программных модулей');
+    expect(data.subjects[0].subjectName).toBe('Разработка кода ИС');
+  });
+
+  it('предмет из справочника не задваивается в табеле', () => {
+    // В табеле предмет записан полным названием из учебного плана,
+    // на листе — рабочим. Это один предмет, строка в табеле одна.
+    const data = parse({
+      students,
+      marks,
+      subjects: [{ name: 'Тестирование информационных систем', teacher: 'Коваленко Д. Р.' }],
+    });
+
+    const names = data.reportCards[0]?.rows.map((row) => row.subjectName) ?? [];
+    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
   });
 
   it('на файле без списка студентов объясняет, что не так', () => {
