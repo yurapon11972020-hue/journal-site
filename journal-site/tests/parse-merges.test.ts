@@ -84,6 +84,46 @@ describe('объединённые клетки', () => {
     expect(data.students[1].subjects[0].grades.map((grade) => grade.value)).toEqual(['5', '4', 'н']);
   });
 
+  it('объединённая клетка помнит, сколько столбцов занимает', () => {
+    const buffer = buildWorkbook({
+      Математика: {
+        rows: subjectRows('ИСиП-25/9', [
+          ['Контрольная работа', '', '', '5'],
+          ['5', '4', '3', '4'],
+        ]),
+        merges: ['C5:E5'],
+      },
+    });
+
+    const data = parseJournalWorkbook(buffer, fileInfo(buffer));
+    const grades = data.students[0].subjects[0].grades;
+
+    // Объединение накрыло три даты, четвёртая осталась своей клеткой.
+    expect(grades.map((grade) => [grade.value, grade.span ?? 1])).toEqual([
+      ['Контрольная работа', 3],
+      ['5', 1],
+    ]);
+
+    // У соседа объединения нет — все четыре клетки обычные.
+    expect(data.students[1].subjects[0].grades.every((grade) => (grade.span ?? 1) === 1)).toBe(true);
+  });
+
+  it('объединение не вылезает за последний столбец занятий', () => {
+    const buffer = buildWorkbook({
+      Математика: {
+        // Объединение тянется до итоговых столбцов, но занятий всего четыре.
+        rows: subjectRows('ИСиП-25/9', [['Практика', '', '', '']]),
+        merges: ['C5:H5'],
+      },
+    });
+
+    const data = parseJournalWorkbook(buffer, fileInfo(buffer));
+    const grades = data.students[0].subjects[0].grades;
+
+    expect(grades).toHaveLength(1);
+    expect(grades[0].span).toBe(4);
+  });
+
   it('широкая подпись под таблицей не превращается в оценки', () => {
     const rows = subjectRows('ИСиП-25/9', [['5', '4', '3', '5']]);
     rows.push([], ['ПЛАН', '', '', '', '', '']);
@@ -96,6 +136,20 @@ describe('объединённые клетки', () => {
 
     expect(data.students).toHaveLength(1);
     expect(data.students[0].subjects[0].grades.map((grade) => grade.value)).toEqual(['5', '4', '3', '5']);
+  });
+
+  it('темы занятий не попадают в список студентов', () => {
+    const rows = subjectRows('ИСиП-25/9', [['5', '4', '3', '5'], ['4', '4', '4', '4']]);
+    // Блок тем ниже таблицы: строки там тоже пронумерованы.
+    rows.push([], ['Дата', 'Тема занятия', 'Домашнее задание'], ['1.', 'Значение информации'], [
+      '2.',
+      'Свойства и виды информации',
+    ]);
+
+    const buffer = buildWorkbook({ Математика: { rows } });
+    const data = parseJournalWorkbook(buffer, fileInfo(buffer));
+
+    expect(data.students.map((student) => student.name)).toEqual(['Студент 1 Тестович', 'Студент 2 Тестович']);
   });
 
   it('учебный год в объединённой шапке не становится названием группы', () => {

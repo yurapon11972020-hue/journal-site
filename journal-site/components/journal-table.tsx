@@ -89,6 +89,47 @@ function useJournalLayout(
 }
 
 /**
+ * Клетки одной строки студента с учётом объединений из Excel.
+ *
+ * Обычная оценка занимает одну клетку. Если преподаватель объединил
+ * несколько дат и написал поверх них пометку, на сайте это тоже одна
+ * широкая клетка: раньше пометка либо повторялась в каждом столбце,
+ * либо ютилась в одном узком, а рядом стояли прочерки.
+ */
+function buildRowCells(row: JournalRow, columns: JournalColumn[]) {
+  const cells = [];
+
+  for (let index = 0; index < columns.length; ) {
+    const column = columns[index];
+    const grade = row.gradeByColumn.get(column.key);
+    const span = Math.min(Math.max(grade?.span ?? 1, 1), columns.length - index);
+    const merged = span > 1;
+
+    cells.push(
+      <td
+        className={merged ? 'col-date col-date--merged' : 'col-date'}
+        colSpan={merged ? span : undefined}
+        key={`${row.studentId}-${column.key}`}
+      >
+        {!grade ? (
+          <span className="grade grade--empty">—</span>
+        ) : merged ? (
+          <span className="mergednote" title={`${row.studentName} · ${column.label}`}>
+            {grade.value}
+          </span>
+        ) : (
+          <GradeBadge value={grade.value} title={`${row.studentName} · ${column.label}`} />
+        )}
+      </td>,
+    );
+
+    index += span;
+  }
+
+  return cells;
+}
+
+/**
  * Основная таблица журнала: студенты по строкам, даты занятий по столбцам.
  *
  * Шапка и первые два столбца закреплены, поэтому видно, чья это строка
@@ -169,18 +210,7 @@ export default function JournalTable({
                   <span className="name-full">{row.studentName}</span>
                   <span className="name-short">{row.shortName}</span>
                 </th>
-                {columns.map((column) => {
-                  const grade = row.gradeByColumn.get(column.key);
-                  return (
-                    <td className="col-date" key={`${row.studentId}-${column.key}`}>
-                      {grade ? (
-                        <GradeBadge value={grade.value} title={`${row.studentName} · ${column.label}`} />
-                      ) : (
-                        <span className="grade grade--empty">—</span>
-                      )}
-                    </td>
-                  );
-                })}
+                {buildRowCells(row, columns)}
                 {blankKeys.map((key) => (
                   <td className="col-date col-date--blank" key={`${row.studentId}-${key}`} />
                 ))}

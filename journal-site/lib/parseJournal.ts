@@ -150,6 +150,16 @@ function getOwnCellValue(sheet: XLSX.WorkSheet, row: number, col: number): unkno
   return cell?.v ?? null;
 }
 
+/**
+ * Объединение, которое начинается ровно в этой клетке.
+ *
+ * Нужно, чтобы нарисовать на сайте такую же широкую клетку, как в Excel:
+ * преподаватель объединяет несколько дат и пишет поверх них одну пометку.
+ */
+function getMergeStartingAt(sheet: XLSX.WorkSheet, row: number, col: number): XLSX.Range | undefined {
+  return sheet['!merges']?.find((merge) => merge.s.r === row - 1 && merge.s.c === col - 1);
+}
+
 function getOwnCellText(sheet: XLSX.WorkSheet, row: number, col: number): string {
   const cell = getDirectCell(sheet, row, col);
 
@@ -342,7 +352,12 @@ function collectNumberedRows(sheet: XLSX.WorkSheet): Array<{ row: number; name: 
   const range = XLSX.utils.decode_range(ref);
   const rows: Array<{ row: number; name: string }> = [];
 
-  for (let row = 1; row <= range.e.r + 1; row += 1) {
+  // Ниже блока с темами занятий студентов уже нет: там свои нумерованные
+  // строки («1. Значение информации»), и без этой границы темы попадали
+  // в список группы как студенты.
+  const lastRow = findTopicHeaderRow(sheet, range.e.r + 1) ?? range.e.r + 1;
+
+  for (let row = 1; row <= lastRow; row += 1) {
     if (!isStudentNumber(getOwnCellValue(sheet, row, 1))) {
       continue;
     }
@@ -585,6 +600,17 @@ function isTopicHeaderRow(sheet: XLSX.WorkSheet, row: number): boolean {
   return col1 === 'дата' && (col2.includes('тема') || col2.includes('дз'));
 }
 
+/** Строка «Дата | Тема занятия», с которой начинается блок тем. */
+function findTopicHeaderRow(sheet: XLSX.WorkSheet, lastRow: number): number | null {
+  for (let row = 1; row <= lastRow; row += 1) {
+    if (isTopicHeaderRow(sheet, row)) {
+      return row;
+    }
+  }
+
+  return null;
+}
+
 function parseLessonTopics(sheet: XLSX.WorkSheet): LessonTopic[] {
   const ref = sheet['!ref'];
   if (!ref) {
@@ -592,14 +618,7 @@ function parseLessonTopics(sheet: XLSX.WorkSheet): LessonTopic[] {
   }
 
   const range = XLSX.utils.decode_range(ref);
-  let headerRow: number | null = null;
-
-  for (let row = 1; row <= range.e.r + 1; row += 1) {
-    if (isTopicHeaderRow(sheet, row)) {
-      headerRow = row;
-      break;
-    }
-  }
+  const headerRow = findTopicHeaderRow(sheet, range.e.r + 1);
 
   if (!headerRow) {
     return [];
@@ -656,6 +675,35 @@ function buildBlankSubject(sheetName: string, subjectName: string, teacherName: 
   };
 }
 
+/**
+ * Сколько столбцов занятий накрывает объединение, начинающееся в этой клетке.
+ *
+ * Считаем не столбцы Excel, а столбцы таблицы на сайте: между датами
+ * попадаются итоговые столбцы, которые в журнал не выводятся.
+ */
+function countCoveredLessons(
+  sheet: XLSX.WorkSheet,
+  row: number,
+  col: number,
+  lessonColumns: SheetLessonColumn[],
+  position: number,
+): number {
+  const merge = getMergeStartingAt(sheet, row, col);
+  if (!merge || merge.e.c <= merge.s.c) {
+    return 1;
+  }
+
+  let span = 1;
+  for (let next = position + 1; next < lessonColumns.length; next += 1) {
+    if (lessonColumns[next].index - 1 > merge.e.c) {
+      break;
+    }
+    span += 1;
+  }
+
+  return span;
+}
+
 function parseStudentSubject(
   sheet: XLSX.WorkSheet,
   row: number | null,
@@ -676,12 +724,25 @@ function parseStudentSubject(
   const numericGrades: number[] = [];
   const absences: AbsenceSummary = { valid: 0, invalid: 0 };
 
-  for (const lesson of lessonColumns) {
+  // Столбцы, накрытые объединением слева: их значение уже учтено,
+  // и отдельными клетками они не выводятся.
+  let coveredUntil = -1;
+
+  for (const [position, lesson] of lessonColumns.entries()) {
+    if (position <= coveredUntil) {
+      continue;
+    }
+
     const rawValue = getOwnCellValue(sheet, row, lesson.index);
     const stringValue = getOwnCellText(sheet, row, lesson.index);
 
     if (!stringValue) {
       continue;
+    }
+
+    const span = countCoveredLessons(sheet, row, lesson.index, lessonColumns, position);
+    if (span > 1) {
+      coveredUntil = position + span - 1;
     }
 
     if (isValidAbsence(rawValue)) {
@@ -703,6 +764,7 @@ function parseStudentSubject(
       dayLabel: lesson.dayLabel,
       label: lesson.label,
       value: stringValue,
+      ...(span > 1 ? { span } : {}),
     });
   }
 
