@@ -100,16 +100,16 @@ describe('parseJournalWorkbook', () => {
   });
 
   it('предмет из справочника не задваивается в табеле', () => {
-    // В табеле предмет записан полным названием из учебного плана,
-    // на листе — рабочим. Это один предмет, строка в табеле одна.
+    // Справочник знает этот предмет под полным названием из учебного
+    // плана. Он остался для сверки, поэтому строка в табеле одна —
+    // и подписана так же, как лист журнала.
     const data = parse({
       students,
       marks,
-      subjects: [{ name: 'Тестирование информационных систем', teacher: 'Коваленко Д. Р.' }],
+      subjects: [{ name: 'Разработка кода ИС', teacher: 'Кузнецов Д. С.' }],
     });
 
-    const names = data.reportCards[0]?.rows.map((row) => row.subjectName) ?? [];
-    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
+    expect(data.reportCards[0].rows.map((row) => row.subjectName)).toEqual(['Разработка кода ИС']);
   });
 
   it('на файле без списка студентов объясняет, что не так', () => {
