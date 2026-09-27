@@ -205,38 +205,44 @@ function useJournalLayout(
 }
 
 /**
- * Сколько столбцов нужно таблице.
+ * Длинная запись поверх нескольких дат — приказ о переводе, практика.
  *
- * Объединённая пометка занимает столько дат, сколько их накрыто в Excel,
- * даже если оценок по этим датам ещё нет и своих столбцов у них нет.
- * Без этого широкой клетке некуда развернуться, и на телефоне приказ
- * о переводе снова ужимался бы в одну клетку шириной в 40 пикселей.
+ * Это не оценка, а пометка из журнала. Отличаем по виду: у оценки и
+ * у отметки о пропуске нет пробелов и они короткие, даже самые
+ * многословные вроде «н/у/отработка».
  */
-function countRequiredColumns(rows: JournalRow[], columns: JournalColumn[]): number {
-  let required = columns.length;
+function isNote(value: string): boolean {
+  const text = value.trim();
+  return text.length > 12 && /\s/.test(text);
+}
+
+/** Пометки из журнала: кто и что. Показываются списком под таблицей. */
+function collectNotes(rows: JournalRow[], columns: JournalColumn[]): Array<{ id: string; name: string; text: string }> {
+  const notes: Array<{ id: string; name: string; text: string }> = [];
 
   for (const row of rows) {
-    for (const [index, column] of columns.entries()) {
-      const span = row.gradeByColumn.get(column.key)?.span ?? 1;
-      required = Math.max(required, index + span);
+    for (const column of columns) {
+      const grade = row.gradeByColumn.get(column.key);
+      if (grade && isNote(grade.value)) {
+        notes.push({ id: `${row.studentId}-${column.key}`, name: row.studentName, text: grade.value.trim() });
+      }
     }
   }
 
-  return required;
+  return notes;
 }
 
 /**
  * Клетки одной строки студента с учётом объединений из Excel.
  *
- * Обычная оценка занимает одну клетку. Если преподаватель объединил
- * несколько дат и написал поверх них пометку — приказ о переводе,
- * практику, — на сайте это тоже одна широкая клетка: раньше пометка
- * либо повторялась в каждом столбце, либо ютилась в одном узком,
- * а рядом стояли прочерки.
+ * Обычная оценка занимает одну клетку. Объединение в журнале —
+ * одну широкую, как в самом файле.
  *
- * Пометка растягивается и на пустые клетки справа: в журнале под неё
- * отведены даты, которых ещё не было, и столбцов с оценками там нет —
- * иначе широкой клетке было бы некуда развернуться.
+ * Ширину таблицы пометка при этом не задаёт. В журнале приказ о переводе
+ * растянут на все даты семестра вперёд, и если отводить под него столько
+ * же места, настоящие оценки сжимаются в нечитаемую полоску ради одной
+ * строки. Поэтому пометка занимает столько столбцов, сколько их в таблице
+ * есть, а целиком её текст стоит списком под таблицей.
  */
 function buildRowCells(row: JournalRow, columns: JournalColumn[], blanks: number) {
   const cells = [];
@@ -263,8 +269,8 @@ function buildRowCells(row: JournalRow, columns: JournalColumn[], blanks: number
       >
         {!grade ? (
           <span className="grade grade--empty">—</span>
-        ) : merged ? (
-          <span className="mergednote" title={`${row.studentName} · ${column.label}`}>
+        ) : merged || isNote(grade.value) ? (
+          <span className="mergednote" title={`${row.studentName}: ${grade.value.trim()}`}>
             {grade.value}
           </span>
         ) : (
@@ -296,14 +302,11 @@ export default function JournalTable({
 }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
-  const requiredColumns = useMemo(() => countRequiredColumns(rows, columns), [rows, columns]);
   const names = useMemo(() => rows.map((row) => row.studentName), [rows]);
-  const { blanks, zoom, width, nameWidth } = useJournalLayout(tableRef, boxRef, requiredColumns, names);
+  const notes = useMemo(() => collectNotes(rows, columns), [rows, columns]);
+  const { blanks, zoom, width, nameWidth } = useJournalLayout(tableRef, boxRef, columns.length, names);
 
-  // Пустые клетки: и те, что зарезервированы под объединения,
-  // и те, которыми таблица добирается до края экрана.
-  const filler = requiredColumns - columns.length + blanks;
-  const blankKeys = Array.from({ length: filler }, (_, index) => `blank-${index}`);
+  const blankKeys = Array.from({ length: blanks }, (_, index) => `blank-${index}`);
 
   return (
     <div className="tablebox">
@@ -369,7 +372,7 @@ export default function JournalTable({
                 <th scope="row" className="stick col-name">
                   {row.studentName}
                 </th>
-                {buildRowCells(row, columns, filler)}
+                {buildRowCells(row, columns, blanks)}
                 <td className="col-sum col-sum--first">
                   <GradeBadge value={row.average} />
                 </td>
@@ -384,6 +387,17 @@ export default function JournalTable({
           </tbody>
         </table>
       </div>
+
+      {notes.length ? (
+        <ul className="tablenotes">
+          {notes.map((note) => (
+            <li className="tablenotes__item" key={note.id}>
+              <span className="tablenotes__name">{note.name}</span>
+              <span className="tablenotes__text">{note.text}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
