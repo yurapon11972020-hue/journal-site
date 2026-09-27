@@ -471,13 +471,6 @@ p {
   margin-bottom: 18px;
 }
 
-.page-head__logo {
-  width: 100%;
-  max-width: 300px;
-  height: auto;
-  margin-bottom: 10px;
-}
-
 .page-head__title {
   font-size: 25px;
   font-weight: 680;
