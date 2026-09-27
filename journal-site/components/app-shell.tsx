@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 
@@ -104,12 +105,7 @@ export default function AppShell({
 
       <nav className={`sidebar${drawerOpen ? ' sidebar--open' : ''}`} aria-label="Разделы журнала">
         <div className="sidebar__brand">
-          <span className="sidebar__logo" aria-hidden>
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-              <path d="M12 3 2 8l10 5 10-5-10-5Z" />
-              <path d="M5 10.5V16c0 1.7 3.1 3 7 3s7-1.3 7-3v-5.5" />
-            </svg>
-          </span>
+          <Image className="sidebar__logo" src="/logo.png" alt="" width={160} height={155} priority />
           <span className="sidebar__brand-text">
             <span className="sidebar__brand-name">{brandName}</span>
             {brandSub ? <span className="sidebar__brand-sub">{brandSub}</span> : null}

@@ -202,14 +202,11 @@ p {
 }
 
 .sidebar__logo {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: auto;
   flex-shrink: 0;
-  border-radius: var(--radius);
-  background: var(--primary);
-  color: var(--primary-on);
+  /* Подложки нет: у логотипа прозрачный фон, и он одинаково
+     читается и на светлой теме, и на тёмной. */
 }
 
 .sidebar__brand-text {
@@ -472,6 +469,13 @@ p {
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 18px;
+}
+
+.page-head__logo {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  margin-bottom: 10px;
 }
 
 .page-head__title {
@@ -1379,14 +1383,10 @@ p {
 }
 
 .auth__logo {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  margin-bottom: 14px;
-  border-radius: var(--radius);
-  background: var(--primary);
-  color: var(--primary-on);
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  margin-bottom: 18px;
 }
 
 .auth__title {
