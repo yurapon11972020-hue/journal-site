@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { redirect } from 'next/navigation';
 
 import { isAccessCodeEnabled } from '@/lib/access';
@@ -23,12 +24,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="auth">
       <form className="auth__card" method="post" action="/api/login">
-        <div className="auth__logo" aria-hidden>
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
-            <path d="M12 3 2 8l10 5 10-5-10-5Z" />
-            <path d="M5 10.5V16c0 1.7 3.1 3 7 3s7-1.3 7-3v-5.5" />
-          </svg>
-        </div>
+        <Image className="auth__logo" src="/logo-wide.png" alt="Подпольный журнал" width={640} height={135} priority />
 
         <h1 className="auth__title">Вход в электронный журнал</h1>
         <p className="auth__text">Введи код доступа, который выдал куратор группы.</p>

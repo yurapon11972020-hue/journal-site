@@ -358,7 +358,7 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
   return (
     <AppShell
       brandName={groupName}
-      brandSub="Электронный журнал"
+      brandSub="Подпольный журнал"
       groups={navGroups}
       activeId={section}
       onSelect={(id) => setSection(id as SectionId)}

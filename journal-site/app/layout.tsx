@@ -16,7 +16,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Электронный журнал',
+  title: 'Подпольный журнал',
   description: 'Оценки, пропуски и темы занятий учебной группы.',
 };
 
