@@ -978,6 +978,37 @@ p {
   background: transparent;
 }
 
+/* Пометки из журнала под таблицей: приказ о переводе, практика.
+   В самой таблице такая запись обрезается по ширине столбцов, а здесь
+   читается целиком и не ломает разлиновку. */
+.tablenotes {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  list-style: none;
+}
+
+.tablenotes__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tablenotes__name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tablenotes__text {
+  color: var(--text-2);
+}
+
 /* Объединённые в Excel клетки: одна широкая клетка вместо нескольких узких.
    Ширину задаёт colspan, поэтому своей ширины у неё нет. */
 .dtable--journal .col-date--merged {
