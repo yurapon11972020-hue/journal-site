@@ -16,7 +16,6 @@ export interface JournalColumn {
 export interface JournalRow {
   studentId: number;
   studentName: string;
-  shortName: string;
   average: number | null;
   absences: { valid: number; invalid: number };
   gradeByColumn: Map<string, GradeEntry>;
@@ -25,6 +24,9 @@ export interface JournalRow {
 /** Больше пустых клеток рисовать незачем — строка и так уходит за экран. */
 const MAX_BLANK_COLUMNS = 40;
 
+/** Сколько раз примерять ширину столбца с именами, прежде чем сдаться. */
+const MAX_FIT_ATTEMPTS = 5;
+
 interface Layout {
   /** Сколько пустых клеток дорисовать справа до края. */
   blanks: number;
@@ -32,9 +34,99 @@ interface Layout {
   zoom: number;
   /** Точная ширина таблицы в пикселях; null — пока не измерили. */
   width: number | null;
+  /** Ширина столбца с именами; null — пока не измерили. */
+  nameWidth: number | null;
+}
+
+/** Подпись столбца с фамилиями: она тоже должна помещаться целиком. */
+const NAME_HEADER = 'Обучающийся';
+
+/** Один холст на всё приложение: нужен только для замера текста. */
+let measuringCanvas: HTMLCanvasElement | null = null;
+
+/** Ширина текста в клетке: считаем её же шрифтом и с её же отступами. */
+function measureInCell(cell: Element, texts: string[]): number {
+  measuringCanvas ??= document.createElement('canvas');
+  const context = measuringCanvas.getContext('2d');
+  if (!context) {
+    return 0;
+  }
+
+  const styles = getComputedStyle(cell);
+  context.font = `${styles.fontWeight} ${styles.fontSize} ${styles.fontFamily}`;
+
+  let longest = 0;
+  for (const text of texts) {
+    longest = Math.max(longest, context.measureText(text).width);
+  }
+
+  const padding = (Number.parseFloat(styles.paddingLeft) || 0) + (Number.parseFloat(styles.paddingRight) || 0);
+  return longest + padding;
 }
 
 /**
+ * Ширина столбца с именами — по самому длинному имени.
+ *
+ * Имена не сокращаются и не переносятся, поэтому столбцу нужна ровно та
+ * ширина, в которую все они влезают в одну строку. Меряем текст на холсте,
+ * а не по свёрстанным клеткам: клетка уже ограничена текущей шириной
+ * столбца, и по ней настоящую длину имени не узнать.
+ *
+ * Шапка и строки меряются порознь: шрифт у них разный, и по шапке имена
+ * выходили уже, чем на самом деле, — как раз настолько, чтобы обрезаться.
+ */
+function measureNameWidth(table: HTMLTableElement, names: string[]): number | null {
+  const headCell = table.querySelector('thead .col-name');
+  const bodyCell = table.querySelector('tbody .col-name');
+
+  if (!headCell && !bodyCell) {
+    return null;
+  }
+
+  const needed = Math.max(
+    headCell ? measureInCell(headCell, [NAME_HEADER]) : 0,
+    bodyCell ? measureInCell(bodyCell, names) : 0,
+  );
+
+  // Лишний пиксель — на округление подпиксельной ширины текста.
+  return Math.ceil(needed + 1);
+}
+
+/**
+ * Во сколько раз самое длинное имя шире своей клетки.
+ *
+ * Меряется уже свёрстанная таблица: `zoom` не растягивает готовую
+ * картинку, а заставляет браузер перерисовать текст в меньшем размере,
+ * и округление ширины букв делает строку шире, чем считает холст.
+ * Предсказать это формулой нельзя — поэтому сверяемся с результатом.
+ */
+function worstNameOverflow(table: HTMLTableElement): number {
+  const range = document.createRange();
+  let worst = 1;
+
+  for (const cell of table.querySelectorAll('tbody .col-name, thead .col-name')) {
+    const node = [...cell.childNodes].find(
+      (child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim(),
+    );
+    if (!node) {
+      continue;
+    }
+
+    range.selectNodeContents(node);
+    const textWidth = range.getBoundingClientRect().width;
+    const cellWidth = cell.getBoundingClientRect().width;
+
+    if (textWidth > 0 && cellWidth > 0) {
+      worst = Math.max(worst, textWidth / cellWidth);
+    }
+  }
+
+  return worst;
+}
+
+/**
+ * Подгоняет таблицу под ширину колонки./**
+ * Подгоняет таблицу под ширину колонки./**
  * Подгоняет таблицу под ширину колонки.
  *
  * Ничего не растягивается: фамилии и клетки занятий всегда своей ширины.
@@ -47,8 +139,9 @@ function useJournalLayout(
   tableRef: React.RefObject<HTMLTableElement | null>,
   boxRef: React.RefObject<HTMLDivElement | null>,
   columnCount: number,
+  names: string[],
 ): Layout {
-  const [layout, setLayout] = useState<Layout>({ blanks: 0, zoom: 1, width: null });
+  const [layout, setLayout] = useState<Layout>({ blanks: 0, zoom: 1, width: null, nameWidth: null });
 
   useEffect(() => {
     const table = tableRef.current;
@@ -65,17 +158,40 @@ function useJournalLayout(
         return;
       }
 
-      const fixed = px('--w-idx') + px('--w-name') + 3 * px('--w-sum');
-      const natural = fixed + columnCount * dateWidth;
       const available = box.clientWidth;
+      const fixedExceptName = px('--w-idx') + 3 * px('--w-sum') + columnCount * dateWidth;
 
-      if (natural > available) {
-        setLayout({ blanks: 0, zoom: available / natural, width: natural });
-        return;
+      const plan = (nameWidth: number): Layout & { nameWidth: number } => {
+        const natural = fixedExceptName + nameWidth;
+
+        if (natural > available) {
+          return { blanks: 0, zoom: available / natural, width: natural, nameWidth };
+        }
+
+        const blanks = Math.min(MAX_BLANK_COLUMNS, Math.floor((available - natural) / dateWidth));
+        return { blanks, zoom: 1, width: natural + blanks * dateWidth, nameWidth };
+      };
+
+      let next = plan(measureNameWidth(table, names) ?? px('--w-name'));
+
+      // Примеряем результат на месте и, если имя всё же не влезло,
+      // расширяем столбец. Каждый шаг уменьшает промах в разы, так что
+      // хватает пары попыток; предел — чтобы не крутиться бесконечно,
+      // если шрифт по какой-то причине так и не сойдётся.
+      for (let attempt = 0; attempt < MAX_FIT_ATTEMPTS; attempt += 1) {
+        table.style.setProperty('--w-name', `${next.nameWidth}px`);
+        table.style.width = `${next.width}px`;
+        table.style.zoom = String(next.zoom);
+
+        const overflow = worstNameOverflow(table);
+        if (overflow <= 1.002) {
+          break;
+        }
+
+        next = plan(Math.ceil(next.nameWidth * overflow));
       }
 
-      const blanks = Math.min(MAX_BLANK_COLUMNS, Math.floor((available - natural) / dateWidth));
-      setLayout({ blanks, zoom: 1, width: natural + blanks * dateWidth });
+      setLayout(next);
     };
 
     // ResizeObserver зовёт обработчик сразу после подписки, поэтому первое
@@ -83,7 +199,7 @@ function useJournalLayout(
     const observer = new ResizeObserver(measure);
     observer.observe(box);
     return () => observer.disconnect();
-  }, [tableRef, boxRef, columnCount]);
+  }, [tableRef, boxRef, columnCount, names]);
 
   return layout;
 }
@@ -181,7 +297,8 @@ export default function JournalTable({
   const boxRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
   const requiredColumns = useMemo(() => countRequiredColumns(rows, columns), [rows, columns]);
-  const { blanks, zoom, width } = useJournalLayout(tableRef, boxRef, requiredColumns);
+  const names = useMemo(() => rows.map((row) => row.studentName), [rows]);
+  const { blanks, zoom, width, nameWidth } = useJournalLayout(tableRef, boxRef, requiredColumns, names);
 
   // Пустые клетки: и те, что зарезервированы под объединения,
   // и те, которыми таблица добирается до края экрана.
@@ -200,7 +317,13 @@ export default function JournalTable({
         <table
           ref={tableRef}
           className="dtable dtable--journal"
-          style={{ zoom, width: width ?? undefined } as CSSProperties}
+          style={
+            {
+              zoom,
+              width: width ?? undefined,
+              ...(nameWidth ? { '--w-name': `${nameWidth}px` } : {}),
+            } as CSSProperties
+          }
         >
           <caption className="sr-only">{caption}</caption>
           <thead>
@@ -209,8 +332,7 @@ export default function JournalTable({
                 №
               </th>
               <th scope="col" className="stick col-name">
-                <span className="head-full">Обучающийся</span>
-                <span className="head-short">Студент</span>
+                {NAME_HEADER}
               </th>
               {columns.map((column) => (
                 <th scope="col" className="col-date" key={column.key}>
@@ -245,8 +367,7 @@ export default function JournalTable({
               <tr key={row.studentId}>
                 <td className="stick col-idx">{index + 1}</td>
                 <th scope="row" className="stick col-name">
-                  <span className="name-full">{row.studentName}</span>
-                  <span className="name-short">{row.shortName}</span>
+                  {row.studentName}
                 </th>
                 {buildRowCells(row, columns, filler)}
                 <td className="col-sum col-sum--first">

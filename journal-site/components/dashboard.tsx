@@ -61,16 +61,6 @@ interface SubjectAggregate {
 
 /* ----------------------------- вычисления ----------------------------- */
 
-/** «Иванов Иван Иванович» → «Иванов И. И.» — для узкого экрана. */
-function shortStudentName(fullName: string): string {
-  const parts = fullName.split(' ').filter(Boolean);
-  if (parts.length < 2) {
-    return fullName;
-  }
-
-  return `${parts[0]} ${parts.slice(1).map((part) => `${part[0]}.`).join(' ')}`;
-}
-
 function formatAverage(value: number | null): string {
   if (value === null) {
     return '—';
@@ -299,7 +289,6 @@ export default function Dashboard({ data, backHref = '/', backLabel = 'Все г
     return list.map((student) => ({
       studentId: student.studentId,
       studentName: student.studentName,
-      shortName: shortStudentName(student.studentName),
       average: student.average,
       absences: student.absences,
       gradeByColumn: buildGradeMap(student.grades),
