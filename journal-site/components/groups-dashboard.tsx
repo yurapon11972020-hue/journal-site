@@ -78,7 +78,6 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
       <main className="pickshell__body">
         <header className="page-head">
           <div>
-            <Image className="page-head__logo" src="/logo-wide.png" alt="Подпольный журнал" width={640} height={135} priority />
             <h1 className="page-head__title">Журналы групп</h1>
             <p className="page-head__sub">
               {groups.length} {groupsWord(groups.length)} · выбери группу, чтобы открыть оценки, пропуски и темы
