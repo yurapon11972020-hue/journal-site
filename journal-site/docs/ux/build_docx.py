@@ -21,7 +21,7 @@ from docx.shared import Cm, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parent
-OUTPUT = ROOT / "КТ2_Подпольный_журнал.docx"
+OUTPUT = ROOT / "KT2.docx"
 REPO_URL = "https://github.com/yurapon11972020-hue/journal-site"
 BRANCH = "codex/journal-kt2-ux-20261014"
 SOURCE_URL = f"{REPO_URL}/blob/{BRANCH}/journal-site/docs/ux"
