@@ -8,7 +8,7 @@
 
 1. сервер скачивает Excel каждой группы с Яндекс.Диска в локальный кэш;
 2. сайт читает уже скачанный локальный файл;
-3. каждые 30 минут сервер скачивает новую копию;
+3. при работающем сервере обновление запускается каждую минуту;
 4. старые копии удаляются, чтобы не забивать память;
 5. после перезапуска непостоянного сервера, например Render, файл снова скачивается при старте или первом запросе.
 
@@ -47,9 +47,11 @@ npm install
 ```env
 JOURNAL_SOURCE=yandex-public-cache
 YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
-JOURNAL_CACHE_INTERVAL_MINUTES=30
+JOURNAL_CACHE_INTERVAL_MINUTES=1
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache
+JOURNAL_REFRESH_FROM_HOUR=0
+JOURNAL_REFRESH_TO_HOUR=24
 ```
 
 Готовый шаблон со всеми переменными лежит в `.env.example`.
@@ -81,9 +83,9 @@ http://localhost:3000/api/journal?group=ID  — журнал конкретно�
 - при запуске сервера Next.js пытается скачать Excel всех групп в папку `.journal-cache`;
 - у каждой группы своя подпапка кэша, группы не мешают друг другу;
 - если сервер стартовал, но стартовая загрузка не сработала, первый запрос к сайту всё равно скачает файл;
-- после этого каждые `JOURNAL_CACHE_INTERVAL_MINUTES` минут скачивается новая копия;
+- после этого каждые `JOURNAL_CACHE_INTERVAL_MINUTES` минут запускается проверка и обновление журналов; время загрузки зависит от Яндекс.Диска и сети;
 - сайт всегда читает последнюю скачанную копию;
-- если Яндекс.Диск временно недоступен, отдаётся последняя удачно скачанная копия, а не ошибка;
+- если Яндекс.Диск временно недоступен, отдаётся последняя удачно скачанная копия при её наличии; после перезапуска без кэша ошибка первой загрузки будет видна;
 - `JOURNAL_CACHE_MAX_FILES=2` означает: когда появилась 3-я копия, 1-я удаляется; когда появилась 4-я, удаляется 2-я (лимит считается для каждой группы отдельно).
 
 Для Render можно оставить так, либо поставить кэш в `/tmp`:
@@ -93,6 +95,8 @@ JOURNAL_CACHE_DIR=/tmp/journal-cache
 ```
 
 Важно: Render без постоянного диска очищает файлы после перезапуска сервера. Это нормально: при новом старте журнал снова скачается с Яндекс.Диска.
+
+Минутный цикл работает, пока процесс сервера запущен. Бесплатный Render может усыпить сервис после периода без запросов; во сне таймер не работает. GitHub Actions workflow `.github/workflows/journal-keep-awake.yml` в корне репозитория раз в 5 минут обращается к `/api/groups` и поддерживает активность сервиса. Запуски по расписанию могут задерживаться; строгую круглосуточную гарантию даёт постоянно работающий сервер.
 
 ## 5. Режим без интернета для тестов
 
@@ -145,17 +149,21 @@ Environment variables на Render:
 ```env
 JOURNAL_SOURCE=yandex-public-cache
 YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
-JOURNAL_CACHE_INTERVAL_MINUTES=30
+JOURNAL_CACHE_INTERVAL_MINUTES=1
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=/tmp/journal-cache
+JOURNAL_REFRESH_FROM_HOUR=0
+JOURNAL_REFRESH_TO_HOUR=24
 ```
+
+На уже работающем сервисе проверь эти значения в **Render → Environment** и сохрани изменения: один только коммит `render.yaml` может не обновить действующие переменные.
 
 ## 9. Что уже реализовано
 
 - серверное чтение `.xlsx`;
 - скачивание публичного файла Яндекс.Диска без токена;
 - локальный кэш Excel-файла;
-- автообновление кэша каждые 30 минут;
+- запуск проверки обновлений кэша каждую минуту при работающем сервере;
 - удаление старых версий кэша;
 - автоматический разбор предметных листов;
 - определение списка студентов;

@@ -24,13 +24,13 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: JOURNAL_CACHE_INTERVAL_MINUTES
-        value: "5"
+        value: "1"
       - key: JOURNAL_CACHE_MAX_FILES
         value: "2"
       - key: JOURNAL_CACHE_DIR
         value: /tmp/journal-cache
       - key: JOURNAL_REFRESH_FROM_HOUR
-        value: "5"
+        value: "0"
       - key: JOURNAL_REFRESH_TO_HOUR
         value: "24"
       - key: JOURNAL_TIMEZONE_OFFSET_HOURS

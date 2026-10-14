@@ -40,15 +40,21 @@ export default async function GroupPage({ params }: GroupPageProps) {
     return <Dashboard data={data} backHref="/" backLabel="Все группы" />;
   }
 
+  const temporaryDownloadError = /\b(?:429|5\d{2})\b|fetch failed|timed?\s*out/i.test(errorMessage ?? '');
+
   return (
     <ErrorScreen
       kicker="Ошибка загрузки журнала"
       title="Не удалось открыть группу"
       hint={
-        <>
-          Проверь, открывается ли Excel-файл этой группы по публичной ссылке, и переменную{' '}
-          <code>YANDEX_DISK_PUBLIC_URLS</code> в настройках сервера.
-        </>
+        temporaryDownloadError ? (
+          <>Яндекс.Диск временно не отдал файл. Обнови страницу позже — сайт повторит загрузку.</>
+        ) : (
+          <>
+            Проверь, открывается ли Excel-файл этой группы по публичной ссылке, и переменную{' '}
+            <code>YANDEX_DISK_PUBLIC_URLS</code> в настройках сервера.
+          </>
+        )
       }
       details={errorMessage ?? 'Неизвестная ошибка'}
     />
