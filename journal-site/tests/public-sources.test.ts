@@ -7,7 +7,13 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import * as XLSX from 'xlsx';
 
 import { setSubscriptionStoreForTests } from '@/lib/subscriptions';
-import { getPublicSourcesInfo, listJournalFiles, loadJournalFile, startJournalCache } from '@/lib/yandex-disk';
+import {
+  getPublicSourcesInfo,
+  listJournalFiles,
+  loadJournalFile,
+  recoverPublicJournalFileFromBrowser,
+  startJournalCache,
+} from '@/lib/yandex-disk';
 import { buildJournalWorkbook } from './helpers/journal-fixture';
 
 const FILE_A = 'https://disk.yandex.ru/i/aaaaaaaaaaaaaa';
@@ -625,6 +631,35 @@ describe('загрузка журнала группы', () => {
     downloadApiStatus = 500;
 
     await expect(loadJournalFile(groups[0].filePath)).rejects.toThrow(/500.*временный сбой/i);
+  });
+
+  it('при ошибке скачивания с сервера принимает проверенный журнал из браузера', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
+    const group = (await listJournalFiles())[0];
+    downloadApiStatus = 500;
+
+    await expect(loadJournalFile(group.filePath)).rejects.toThrow(/500/);
+    await recoverPublicJournalFileFromBrowser(group.filePath, remoteWorkbook(FILE_A, ''));
+
+    const recovered = await loadJournalFile(group.filePath);
+    expect(markerOf(recovered.buffer)).toContain(`${FILE_A}::::1`);
+    expect(downloads).toBe(0);
+  });
+
+  it('не заменяет рабочую копию файлом с неверной контрольной суммой', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
+    const group = (await listJournalFiles())[0];
+    const original = await loadJournalFile(group.filePath);
+    remoteRevisions.set(FILE_A, 2);
+
+    await expect(recoverPublicJournalFileFromBrowser(group.filePath, original.buffer)).rejects.toThrow(
+      /отличается от текущего журнала на Яндексе/i,
+    );
+
+    const stillWorking = await loadJournalFile(group.filePath);
+    expect(markerOf(stillWorking.buffer)).toContain(`${FILE_A}::::1`);
+    expect(stillWorking.sourceDetails).toBe(original.sourceDetails);
+    expect(downloads).toBe(1);
   });
 
   it('быстрая группа получает стартовый снимок до медленной, одновременные циклы не дублируются', async () => {

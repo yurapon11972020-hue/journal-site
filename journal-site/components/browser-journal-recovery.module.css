@@ -1,0 +1,44 @@
+.status {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.actions :global(.btn:disabled) {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.fileLabel {
+  display: block;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.fileInput {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.note {
+  margin: 14px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.5;
+}

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { basenameFromFilePath, filenameToGroupName, groupPathToPublicId } from '@/lib/group-files';
 import { formatGroupName } from '@/lib/group-name';
 import { assertJournalFile } from '@/lib/journal-file-check';
+import { readPublicJournalBackup, writePublicJournalBackup } from '@/lib/public-journal-backup';
 import type { JournalFileResult, JournalGroupRef, JournalSource } from '@/lib/types';
 
 const PRIVATE_DOWNLOAD_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/resources/download';
@@ -46,6 +47,7 @@ interface PublicResourceMeta {
   path?: string;
   type?: string;
   md5?: string;
+  size?: number;
   _embedded?: {
     items?: YandexListItem[];
   };
@@ -104,6 +106,8 @@ interface PublicGroupsCacheMeta {
 
 interface PublicJournalCacheRuntime {
   refreshPromises?: Map<string, Promise<CachedJournalVersion>>;
+  recoveryPromises?: Map<string, Promise<void>>;
+  promotionPromises?: Map<string, Promise<CachedJournalVersion>>;
   groupsPromise?: Promise<PublicGroupSource[]>;
   interval?: NodeJS.Timeout;
   cyclePromise?: Promise<void>;
@@ -117,6 +121,8 @@ function getCacheRuntime(): PublicJournalCacheRuntime {
   globalThis.__journalPublicCacheRuntime ??= {};
   const runtime = globalThis.__journalPublicCacheRuntime;
   runtime.refreshPromises ??= new Map<string, Promise<CachedJournalVersion>>();
+  runtime.recoveryPromises ??= new Map<string, Promise<void>>();
+  runtime.promotionPromises ??= new Map<string, Promise<CachedJournalVersion>>();
   return runtime;
 }
 
@@ -399,6 +405,24 @@ function decodePublicGroupPath(filePath?: string): PublicGroupSource | null {
       label: payload.l || undefined,
       ...(payload.g ? { fileNameIsGuess: true } : {}),
     };
+  } catch {
+    return null;
+  }
+}
+
+/** Публичный адрес для загрузки напрямую в браузере пользователя. */
+export function getPublicSourceForGroupPath(filePath?: string): { publicUrl: string; publicPath?: string } | null {
+  const group = decodePublicGroupPath(filePath);
+  if (!group) {
+    return null;
+  }
+
+  try {
+    const url = new URL(group.publicKey);
+    if (url.protocol !== 'https:' || url.hostname !== 'disk.yandex.ru') {
+      return null;
+    }
+    return { publicUrl: url.toString(), publicPath: group.publicPath };
   } catch {
     return null;
   }
@@ -1094,14 +1118,8 @@ async function cleanupOldCacheFiles(cacheDir: string, versionsToKeep: CachedJour
 async function downloadPublicJournalToCache(
   group: PublicGroupSource,
   resourceMeta: PublicResourceMeta | null,
+  expectedPriorMd5: string | null,
 ): Promise<CachedJournalVersion> {
-  const cacheDir = getGroupCacheDir(group);
-  await fs.mkdir(cacheDir, { recursive: true });
-
-  // Имя файла уже известно из списка групп — лишний запрос к API не нужен.
-  // Имя, собранное из хвоста ссылки, известным не считается: иначе группа
-  // навсегда останется «jr0lr00cUQp0FQ» — настоящее имя просто не спросят.
-  const knownFileName = group.fileNameIsGuess ? '' : group.fileName?.trim();
   const downloaded = await getPublicDownloadBuffer(group.publicKey, group.publicPath).catch((error: unknown) => {
     const reason = error instanceof Error ? error.message : String(error);
     const temporaryFailure = /(?:^|\D)(?:408|425|429|5\d\d)(?:\D|$)/.test(reason) ||
@@ -1115,7 +1133,74 @@ async function downloadPublicJournalToCache(
         advice,
     );
   });
-  const buffer = downloaded.buffer;
+  return storePublicJournalBuffer(group, downloaded.buffer, resourceMeta, downloaded.fileName, { expectedPriorMd5 });
+}
+
+interface StorePublicJournalOptions {
+  expectedPriorMd5: string | null;
+  skipBackup?: boolean;
+  downloadedAt?: string;
+}
+
+/** Одинаково проверяем и сохраняем файл, полученный сервером или браузером. */
+async function storePublicJournalBuffer(
+  group: PublicGroupSource,
+  buffer: Buffer,
+  resourceMeta: PublicResourceMeta | null,
+  downloadedFileName: string | null,
+  options: StorePublicJournalOptions,
+): Promise<CachedJournalVersion> {
+  const runtime = getCacheRuntime();
+  const key = getGroupCacheKey(group);
+  const previousPromotion = runtime.promotionPromises?.get(key);
+  const promotion = (async () => {
+    await previousPromotion?.catch(() => undefined);
+    const cacheDir = getGroupCacheDir(group);
+    const current = await getValidLatestCachedVersion(cacheDir, group.publicKey, group.publicPath);
+    const actualMd5 = crypto.createHash('md5').update(buffer).digest('hex');
+
+    if (resourceMeta?.md5 && actualMd5.toLowerCase() !== resourceMeta.md5.toLowerCase()) {
+      throw new Error('Контрольная сумма скачанного журнала не совпадает с данными Яндекса.');
+    }
+    if (current?.md5 === actualMd5) {
+      return markCachedVersionChecked(cacheDir, group, current);
+    }
+
+    // Загрузка с сервера и восстановление через браузер могут идти одновременно.
+    // Если другая загрузка уже сменила версию, сверяем файл с текущими данными
+    // Яндекса, прежде чем разрешить ему заменить новую копию.
+    if ((current?.md5 ?? null) !== options.expectedPriorMd5) {
+      const liveMeta = await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
+      if (!liveMeta?.md5 || liveMeta.md5.toLowerCase() !== actualMd5) {
+        throw new Error('Журнал обновился во время загрузки. Повтори попытку с актуальным файлом.');
+      }
+    }
+
+    return promotePublicJournalBuffer(group, buffer, resourceMeta, downloadedFileName, options, actualMd5);
+  })();
+  runtime.promotionPromises?.set(key, promotion);
+  try {
+    return await promotion;
+  } finally {
+    if (runtime.promotionPromises?.get(key) === promotion) {
+      runtime.promotionPromises.delete(key);
+    }
+  }
+}
+
+async function promotePublicJournalBuffer(
+  group: PublicGroupSource,
+  buffer: Buffer,
+  resourceMeta: PublicResourceMeta | null,
+  downloadedFileName: string | null,
+  options: StorePublicJournalOptions,
+  actualMd5: string,
+): Promise<CachedJournalVersion> {
+  const cacheDir = getGroupCacheDir(group);
+  await fs.mkdir(cacheDir, { recursive: true });
+
+  // Имя файла уже известно из списка групп — лишний запрос к API не нужен.
+  const knownFileName = group.fileNameIsGuess ? '' : group.fileName?.trim();
 
   // Проверяем файл до того, как он заменит прошлую копию: по ссылке может
   // прийти страница входа вместо журнала, и она не должна затереть рабочие данные.
@@ -1124,7 +1209,7 @@ async function downloadPublicJournalToCache(
   // Третий способ узнать имя — заголовок ответа на скачивание: он приходит
   // даже тогда, когда запрос метаданных не прошёл.
   const originalFileName = sanitizeFileName(
-    knownFileName || resourceMeta?.name || downloaded.fileName || group.fileName?.trim() || 'journal.xlsx',
+    knownFileName || resourceMeta?.name || downloadedFileName || group.fileName?.trim() || 'journal.xlsx',
   );
   // ZIP с расширением .xlsx ещё не означает журнал: если таблица битая или
   // нужных листов/студентов нет, сохраняем предыдущую пригодную копию.
@@ -1141,10 +1226,12 @@ async function downloadPublicJournalToCache(
   }
 
   const now = new Date();
-  const downloadedAt = now.toISOString();
+  const downloadedAt = options.downloadedAt && Number.isFinite(Date.parse(options.downloadedAt))
+    ? new Date(options.downloadedAt).toISOString()
+    : now.toISOString();
   const extension = path.extname(originalFileName) || '.xlsx';
   const displayName = originalFileName;
-  const cachedFileName = `journal-${timestampForFileName(now)}${extension}`;
+  const cachedFileName = `journal-${timestampForFileName(now)}-${crypto.randomUUID().slice(0, 8)}${extension}`;
   const cachedFilePath = path.join(cacheDir, cachedFileName);
   const tempFilePath = `${cachedFilePath}.tmp`;
 
@@ -1160,7 +1247,7 @@ async function downloadPublicJournalToCache(
     filePath: cachedFilePath,
     displayName,
     downloadedAt,
-    md5: crypto.createHash('md5').update(buffer).digest('hex'),
+    md5: actualMd5,
     publicKey: group.publicKey,
     publicPath: group.publicPath,
   };
@@ -1172,12 +1259,100 @@ async function downloadPublicJournalToCache(
     displayName,
     publicKey: group.publicKey,
     publicPath: group.publicPath,
-    checkedAt: downloadedAt,
+    checkedAt: now.toISOString(),
     downloadedAt,
     versions,
   });
 
+  if (!options.skipBackup) {
+    await writePublicJournalBackup({
+      sourceKey: getGroupCacheKey(group),
+      publicKey: group.publicKey,
+      publicPath: group.publicPath,
+      fileName: displayName,
+      md5: actualMd5,
+      downloadedAt,
+      buffer,
+    });
+  }
+
   return version;
+}
+
+/**
+ * Если Яндекс выдаёт файл браузеру, но не серверу, браузер может передать его
+ * сюда. MD5 и размер сверяются с метаданными Яндекса до изменения кэша.
+ */
+export async function recoverPublicJournalFileFromBrowser(filePath: string, buffer: Buffer): Promise<void> {
+  const group = decodePublicGroupPath(filePath);
+  if (!group || !getPublicSourceForGroupPath(filePath)) {
+    throw new Error('Для этой группы загрузка через браузер недоступна.');
+  }
+  const cacheDir = getGroupCacheDir(group);
+  const expectedPriorMd5 = (await getValidLatestCachedVersion(cacheDir, group.publicKey, group.publicPath))?.md5 ?? null;
+
+  const meta = await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
+  if (meta?.type !== 'file' || !meta.md5 || !/^[a-f\d]{32}$/i.test(meta.md5)) {
+    throw new Error('Яндекс не подтвердил контрольную сумму файла. Попробуй позже.');
+  }
+  if (typeof meta.size === 'number' && meta.size !== buffer.length) {
+    throw new Error('Размер выбранного файла не совпадает с текущим файлом на Яндексе.');
+  }
+
+  const actualMd5 = crypto.createHash('md5').update(buffer).digest('hex');
+  if (actualMd5.toLowerCase() !== meta.md5.toLowerCase()) {
+    throw new Error('Выбранный файл отличается от текущего журнала на Яндексе. Скачай актуальную копию.');
+  }
+
+  const runtime = getCacheRuntime();
+  const key = getGroupCacheKey(group);
+  const previous = runtime.recoveryPromises?.get(key);
+  const recovery = (async () => {
+    await previous?.catch(() => undefined);
+    const latest = await getValidLatestCachedVersion(cacheDir, group.publicKey, group.publicPath);
+    if (latest?.md5 === actualMd5) {
+      await markCachedVersionChecked(cacheDir, group, latest);
+      return;
+    }
+    await storePublicJournalBuffer(group, buffer, meta, meta.name ?? null, { expectedPriorMd5 });
+  })();
+  runtime.recoveryPromises?.set(key, recovery);
+  try {
+    await recovery;
+  } finally {
+    if (runtime.recoveryPromises?.get(key) === recovery) {
+      runtime.recoveryPromises.delete(key);
+    }
+  }
+}
+
+/** MD5 cached on the server, used by the browser to avoid sending unchanged workbooks. */
+export async function getCachedPublicJournalMd5(filePath: string): Promise<string | null> {
+  const group = decodePublicGroupPath(filePath);
+  if (!group || !getPublicSourceForGroupPath(filePath)) {
+    return null;
+  }
+  const latest = await getValidLatestCachedVersion(getGroupCacheDir(group), group.publicKey, group.publicPath);
+  return latest?.md5 ?? null;
+}
+
+async function restorePublicJournalBackup(group: PublicGroupSource): Promise<CachedJournalVersion | null> {
+  const backup = await readPublicJournalBackup(getGroupCacheKey(group));
+  if (!backup || backup.publicKey !== group.publicKey ||
+      (backup.publicPath || '') !== (group.publicPath || '') ||
+      !/^[a-f\d]{32}$/i.test(backup.md5) ||
+      crypto.createHash('md5').update(backup.buffer).digest('hex') !== backup.md5.toLowerCase()) {
+    return null;
+  }
+
+  try {
+    // The regular promotion path checks the workbook structure before publishing it.
+    return await storePublicJournalBuffer(group, backup.buffer, { name: backup.fileName, md5: backup.md5 },
+      backup.fileName, { expectedPriorMd5: null, skipBackup: true, downloadedAt: backup.downloadedAt });
+  } catch (error) {
+    console.error('[journal-backup] Запасная копия журнала повреждена, пробуем скачать файл:', error);
+    return null;
+  }
 }
 
 async function ensureFreshCachedPublicJournal(
@@ -1202,17 +1377,28 @@ async function ensureFreshCachedPublicJournal(
   }
 
   const refreshPromise = (async () => {
+    if (!latest) {
+      const restored = await restorePublicJournalBackup(group);
+      if (restored) {
+        return restored;
+      }
+    }
     const resourceMeta = await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
     if (latest?.md5 && resourceMeta?.md5 && latest.md5 === resourceMeta.md5) {
-      return markCachedVersionChecked(cacheDir, group, latest);
+      const current = await getValidLatestCachedVersion(cacheDir, group.publicKey, group.publicPath);
+      if (current && current.md5 !== latest.md5) {
+        return current;
+      }
+      return markCachedVersionChecked(cacheDir, group, current ?? latest);
     }
-    return downloadPublicJournalToCache(group, resourceMeta);
+    return downloadPublicJournalToCache(group, resourceMeta, latest?.md5 ?? null);
   })()
     .catch(async (error) => {
       // Не смогли скачать новую копию — отдаём прошлую, чтобы сайт и бот не падали.
-      if (latest) {
+      const available = await getValidLatestCachedVersion(cacheDir, group.publicKey, group.publicPath);
+      if (available) {
         console.error('[journal-cache] Не удалось обновить журнал, отдаём прошлую копию:', error);
-        return markCachedVersionChecked(cacheDir, group, latest);
+        return markCachedVersionChecked(cacheDir, group, available);
       }
       throw error;
     })
