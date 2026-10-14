@@ -14,9 +14,9 @@ import { parseJournalWorkbook } from '@/lib/parseJournal';
 const dir = '.test-data';
 const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((name) => name.endsWith('.xlsx')) : [];
 
-/** Оценка — это цифра, «н» или «н/у». Всё длиннее — подпись из объединения. */
+/** Краткие значения оценок и посещаемости не считаются растёкшейся подписью. */
 function looksLikeMark(value: string): boolean {
-  return /^(\d([.,]\d)?|н|н\/у|осв|зач|незач)$/i.test(value.trim());
+  return /^(\d([.,]\d)?|н|н\/у|н\/о|осв|зач|незач)$/i.test(value.trim());
 }
 
 function parse(file: string) {
