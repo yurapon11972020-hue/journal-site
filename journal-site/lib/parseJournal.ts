@@ -1107,7 +1107,7 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
     // Наружу отдаём только вид источника: внутренний путь кэша и публичная
     // ссылка на Яндекс.Диск не должны попадать в ответ /api/journal.
     sourceDetails: fileInfo.source === 'local' ? (fileInfo.fileName ?? 'локальный файл') : 'Яндекс.Диск',
-    updatedAt: fileInfo.updatedAt ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     studentCount: students.length,
     subjectCount: subjectMeta.length,
     subjects: subjectMeta,
