@@ -33,7 +33,7 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 
    | Key | Value |
    |---|---|
-   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g` |
+   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g` |
 
 4. **Старую переменную `YANDEX_DISK_PUBLIC_URL` (без `S` на конце) удали** — кнопка с корзиной справа от строки.
    Если её оставить, ничего не сломается: она просто игнорируется, пока задана `YANDEX_DISK_PUBLIC_URLS`. Но чтобы потом не путаться, лучше удалить.
@@ -48,17 +48,12 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 https://ТВОЙ-АДРЕС.onrender.com/api/groups
 ```
 
-Ответ должен выглядеть так:
+В ответе проверь количество групп и отсутствие ошибок:
 
 ```json
 {
-  "count": 6,
-  "problems": [],
-  "groups": [
-    { "groupName": "ИСиП-25-9", "url": "/group/..." },
-    { "groupName": "ИСиП-24-9", "url": "/group/..." },
-    { "groupName": "ИСиП-23-9", "url": "/group/..." }
-  ]
+  "count": 10,
+  "problems": []
 }
 ```
 
@@ -68,7 +63,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 В поле `configured` видно, из какой переменной сервер взял ссылки и сколько их там —
 если `variable` показывает `YANDEX_DISK_PUBLIC_URL`, значит новую переменную сервер не увидел.
 
-`count` — сколько групп увидел сайт. Сейчас в переменной шесть ссылок, значит должно быть `"count": 6`.
+`count` — сколько групп увидел сайт. Сейчас задано десять ссылок, поэтому должно быть `"count": 10`; в `groups` — десять групп, включая `ПД-24/1` и `ПД-24/2`.
 Названия групп берутся из имён файлов на Яндекс.Диске — если они выглядят не так, как хочется,
 задай их сам: `ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА, ИСиП-24/9 = https://disk.yandex.ru/i/ССЫЛКА`.
 
@@ -82,7 +77,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 2. Допиши ссылку через запятую:
 
    ```env
-   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, https://disk.yandex.ru/i/WtnnnWnxsUUoZw, https://disk.yandex.ru/i/kORWvg2JaCqGQw, https://disk.yandex.ru/i/mzbfhA6hE_MWSA, https://disk.yandex.ru/i/NIRLGEBZ9kcE8g, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
+   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, https://disk.yandex.ru/i/WtnnnWnxsUUoZw, https://disk.yandex.ru/i/kORWvg2JaCqGQw, https://disk.yandex.ru/i/mzbfhA6hE_MWSA, https://disk.yandex.ru/i/NIRLGEBZ9kcE8g, https://disk.yandex.ru/i/pTtJyYNVAxv_9w, https://disk.yandex.ru/i/DqRcoPsqQh233g, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
    ```
 
 3. **Save Changes** → дождись **Live** → проверь `/api/groups`.
@@ -187,7 +182,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache
