@@ -15,10 +15,25 @@ const PUBLIC_RESOURCE_ENDPOINT = 'https://cloud-api.yandex.net/v1/disk/public/re
 const PUBLIC_CACHE_PATH_PREFIX = '__yandex_public_cache__::';
 const PUBLIC_CACHE_META_FILE = 'latest.json';
 const PUBLIC_CACHE_GROUPS_FILE = 'groups.json';
-const DEFAULT_PUBLIC_CACHE_INTERVAL_MINUTES = 30;
+const DEFAULT_PUBLIC_CACHE_INTERVAL_MINUTES = 1;
 const DEFAULT_PUBLIC_CACHE_MAX_FILES = 2;
+const PUBLIC_GROUPS_CACHE_INTERVAL_MS = 15 * 60 * 1000;
+const MAX_PARALLEL_GROUP_REFRESHES = 4;
 const MAX_PUBLIC_FOLDER_DEPTH = 3;
 const MAX_PUBLIC_GROUPS = 60;
+/** Уже опубликованные ID: сохраняем подписки и ссылки, созданные до перехода на стабильные ключи. */
+const LEGACY_PUBLIC_GROUP_IDS: Record<string, string> = {
+  'https://disk.yandex.ru/i/jr0lr00cUQp0FQ': 'X0p3qpi4K5zZhKZU',
+  'https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg': 'rjrCcrvyk6KZ3aHV',
+  'https://disk.yandex.ru/i/ezTOIqg1oAictA': 'VkYOwj-4KoT2m9y_',
+  'https://disk.yandex.ru/i/n2Ldf1ar5jbjJg': 'H2be0UpJGvfFhj1m',
+  'https://disk.yandex.ru/i/WtnnnWnxsUUoZw': 'KDe8a9WOKaPeTtqb',
+  'https://disk.yandex.ru/i/kORWvg2JaCqGQw': 'F4SaPdO2RQ-FCI3J',
+  'https://disk.yandex.ru/i/mzbfhA6hE_MWSA': 'Ym2xG1J7QX2_Qnvd',
+  'https://disk.yandex.ru/i/NIRLGEBZ9kcE8g': 'AUdmADooLxxqFu79',
+  'https://disk.yandex.ru/i/pTtJyYNVAxv_9w': 'jnhy2jHvh-DXabW7',
+  'https://disk.yandex.ru/i/DqRcoPsqQh233g': 'DxMjFq_nlU3zMRg3',
+};
 
 interface YandexListItem {
   name?: string;
@@ -30,6 +45,7 @@ interface PublicResourceMeta {
   name?: string;
   path?: string;
   type?: string;
+  md5?: string;
   _embedded?: {
     items?: YandexListItem[];
   };
@@ -62,6 +78,9 @@ interface CachedJournalVersion {
   filePath: string;
   displayName: string;
   downloadedAt: string;
+  /** Время последней проверки метаданных, даже если файл не менялся. */
+  checkedAt?: string;
+  md5?: string;
   publicKey: string;
   publicPath?: string;
 }
@@ -87,6 +106,7 @@ interface PublicJournalCacheRuntime {
   refreshPromises?: Map<string, Promise<CachedJournalVersion>>;
   groupsPromise?: Promise<PublicGroupSource[]>;
   interval?: NodeJS.Timeout;
+  cyclePromise?: Promise<void>;
 }
 
 declare global {
@@ -158,7 +178,7 @@ function getHourFromEnv(name: string, fallback: number): number {
 // Окно, в которое журнал обновляется с Яндекс.Диска (по местному времени).
 // Вне окна сайт и бот отдают последнюю скачанную копию.
 function isWithinRefreshWindow(date = new Date()): boolean {
-  const from = Math.min(23, Math.max(0, Math.floor(getHourFromEnv('JOURNAL_REFRESH_FROM_HOUR', 5))));
+  const from = Math.min(23, Math.max(0, Math.floor(getHourFromEnv('JOURNAL_REFRESH_FROM_HOUR', 0))));
   const to = Math.min(24, Math.max(1, Math.floor(getHourFromEnv('JOURNAL_REFRESH_TO_HOUR', 24))));
   const offsetHours = getHourFromEnv('JOURNAL_TIMEZONE_OFFSET_HOURS', 5);
 
@@ -343,6 +363,19 @@ function encodePublicGroupPath(group: PublicGroupSource): string {
   });
 
   return `${PUBLIC_CACHE_PATH_PREFIX}${Buffer.from(payload, 'utf8').toString('base64url')}`;
+}
+
+/** Имя файла и подпись могут меняться; адрес группы и ключ подписки зависят только от источника. */
+function stablePublicGroupId(group: PublicGroupSource): string {
+  if (!group.publicPath && LEGACY_PUBLIC_GROUP_IDS[group.publicKey]) {
+    return LEGACY_PUBLIC_GROUP_IDS[group.publicKey];
+  }
+  return groupPathToPublicId(`yandex-public:${JSON.stringify([group.publicKey, group.publicPath || ''])}`);
+}
+
+function buildPublicGroupRef(group: PublicGroupSource): JournalGroupRef {
+  const ref = buildGroupRef('yandex-public-cache', encodePublicGroupPath(group), group.fileName, group.label);
+  return { ...ref, id: stablePublicGroupId(group) };
 }
 
 function decodePublicGroupPath(filePath?: string): PublicGroupSource | null {
@@ -782,12 +815,21 @@ async function readPublicGroupsCache(): Promise<PublicGroupsCacheMeta | null> {
   }
 }
 
+/** Читатели видят только целый JSON, даже если запись идёт одновременно с запросом. */
+async function writeJsonAtomically(filePath: string, value: unknown): Promise<void> {
+  const tempPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    await fs.rename(tempPath, filePath);
+  } finally {
+    await fs.rm(tempPath, { force: true }).catch(() => undefined);
+  }
+}
+
 async function writePublicGroupsCache(meta: PublicGroupsCacheMeta): Promise<void> {
   const cacheDir = getPublicCacheDir();
   await fs.mkdir(cacheDir, { recursive: true });
-  await fs
-    .writeFile(path.join(cacheDir, PUBLIC_CACHE_GROUPS_FILE), `${JSON.stringify(meta, null, 2)}\n`, 'utf8')
-    .catch(() => undefined);
+  await writeJsonAtomically(path.join(cacheDir, PUBLIC_CACHE_GROUPS_FILE), meta).catch(() => undefined);
 }
 
 function sortPublicGroups(groups: PublicGroupSource[]): PublicGroupSource[] {
@@ -814,11 +856,30 @@ function dedupePublicGroups(groups: PublicGroupSource[]): PublicGroupSource[] {
   return result;
 }
 
+/** Ограничиваем одновременные запросы к Яндексу, сохраняя порядок результатов. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex++;
+        results[index] = await mapper(items[index]);
+      }
+    }),
+  );
+
+  return results;
+}
+
 async function resolvePublicGroupsFromNetwork(cached: PublicGroupsCacheMeta | null): Promise<PublicGroupSource[]> {
   const sources = getPublicSources();
-  const groups: PublicGroupSource[] = [];
-
-  for (const source of sources) {
+  const bySource = await mapWithConcurrency(sources, MAX_PARALLEL_GROUP_REFRESHES, async (source) => {
     const meta = await readPublicResourceMeta(source.publicKey, source.publicPath);
 
     // Ссылка на папку — внутри может быть сразу несколько групп.
@@ -827,42 +888,37 @@ async function resolvePublicGroupsFromNetwork(cached: PublicGroupsCacheMeta | nu
       await collectPublicFolderFiles(source, meta, 0, found);
 
       if (found.length) {
-        groups.push(
-          ...found.map((group) => ({
-            ...group,
-            label: found.length === 1 ? source.label : undefined,
-          })),
-        );
-        continue;
+        return found.map((group) => ({
+          ...group,
+          label: found.length === 1 ? source.label : undefined,
+        }));
       }
 
       // Папка есть, но файлов не видно — берём то, что уже знали раньше.
       const remembered = cached?.groups.filter((group) => group.publicKey === source.publicKey) ?? [];
-      groups.push(...remembered);
-      continue;
+      return remembered;
     }
 
     if (!meta) {
       // Яндекс не ответил: используем прошлый список для этой ссылки, иначе считаем её одним файлом.
       const remembered = cached?.groups.filter((group) => group.publicKey === source.publicKey) ?? [];
       if (remembered.length) {
-        groups.push(...remembered);
-        continue;
+        return remembered;
       }
     }
 
     const knownName = meta?.name || (source.publicPath ? basenameFromFilePath(source.publicPath) : '');
 
-    groups.push({
+    return [{
       publicKey: source.publicKey,
       publicPath: source.publicPath,
       label: source.label,
       fileName: knownName || `${publicKeyHint(source.publicKey)}.xlsx`,
       ...(knownName ? {} : { fileNameIsGuess: true }),
-    });
-  }
+    }];
+  });
 
-  return sortPublicGroups(dedupePublicGroups(groups)).slice(0, MAX_PUBLIC_GROUPS);
+  return sortPublicGroups(dedupePublicGroups(bySource.flat())).slice(0, MAX_PUBLIC_GROUPS);
 }
 
 /**
@@ -894,49 +950,56 @@ async function resolvePublicGroups(options: { force?: boolean } = {}): Promise<P
   const cached = await readPublicGroupsCache();
   const cacheIsCurrent = cached?.configKey === configKey && cached.groups.length > 0;
 
+  const refresh = (): Promise<PublicGroupSource[]> => {
+    if (runtime.groupsPromise) {
+      return runtime.groupsPromise;
+    }
+
+    runtime.groupsPromise = resolvePublicGroupsFromNetwork(cacheIsCurrent ? cached : null)
+      .then(async (groups) => {
+        if (groups.length) {
+          await writePublicGroupsCache({
+            configKey,
+            fetchedAt: new Date().toISOString(),
+            groups,
+          });
+          return groups;
+        }
+
+        if (cacheIsCurrent) {
+          return cached.groups;
+        }
+
+        throw new Error('По указанным публичным ссылкам не найдено ни одного файла журнала.');
+      })
+      .catch((error) => {
+        if (cacheIsCurrent) {
+          console.error('[journal-cache] Не удалось обновить список групп, работаем по прошлому списку:', error);
+          return cached.groups;
+        }
+        throw error;
+      })
+      .finally(() => {
+        runtime.groupsPromise = undefined;
+      });
+
+    return runtime.groupsPromise;
+  };
+
   if (!options.force && cacheIsCurrent) {
     const fetchedAtMs = new Date(cached.fetchedAt).getTime();
-    if (Number.isFinite(fetchedAtMs) && Date.now() - fetchedAtMs < getPublicCacheIntervalMs()) {
-      return cached.groups;
+    if (!Number.isFinite(fetchedAtMs) || Date.now() - fetchedAtMs >= PUBLIC_GROUPS_CACHE_INTERVAL_MS) {
+      if (isWithinRefreshWindow()) {
+        // Старый список годится для ответа; обновляем имена и новые файлы
+        // в фоне, чтобы Telegram webhook не ждал десять запросов к Диску.
+        void refresh();
+      }
     }
-    if (!isWithinRefreshWindow()) {
-      return cached.groups;
-    }
+    return cached.groups;
   }
 
-  if (runtime.groupsPromise) {
-    return runtime.groupsPromise;
-  }
-
-  runtime.groupsPromise = resolvePublicGroupsFromNetwork(cacheIsCurrent ? cached : null)
-    .then(async (groups) => {
-      if (groups.length) {
-        await writePublicGroupsCache({
-          configKey,
-          fetchedAt: new Date().toISOString(),
-          groups,
-        });
-        return groups;
-      }
-
-      if (cacheIsCurrent) {
-        return cached.groups;
-      }
-
-      throw new Error('По указанным публичным ссылкам не найдено ни одного файла журнала.');
-    })
-    .catch((error) => {
-      if (cacheIsCurrent) {
-        console.error('[journal-cache] Не удалось обновить список групп, работаем по прошлому списку:', error);
-        return cached.groups;
-      }
-      throw error;
-    })
-    .finally(() => {
-      runtime.groupsPromise = undefined;
-    });
-
-  return runtime.groupsPromise;
+  // Без подходящего кэша (первый старт либо новые ссылки) нужен ответ сети.
+  return refresh();
 }
 
 async function readPublicCacheMeta(cacheDir: string): Promise<PublicJournalCacheMeta | null> {
@@ -949,7 +1012,7 @@ async function readPublicCacheMeta(cacheDir: string): Promise<PublicJournalCache
 }
 
 async function writePublicCacheMeta(cacheDir: string, meta: PublicJournalCacheMeta): Promise<void> {
-  await fs.writeFile(path.join(cacheDir, PUBLIC_CACHE_META_FILE), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
+  await writeJsonAtomically(path.join(cacheDir, PUBLIC_CACHE_META_FILE), meta);
 }
 
 function isCacheMetaForCurrentSource(meta: PublicJournalCacheMeta | null, publicKey: string, publicPath?: string): meta is PublicJournalCacheMeta {
@@ -976,17 +1039,39 @@ async function getValidLatestCachedVersion(cacheDir: string, publicKey: string, 
   return {
     ...latest,
     filePath: latestPath,
+    checkedAt: meta.checkedAt,
   };
 }
 
 function shouldUseCachedVersion(version: CachedJournalVersion, intervalMs: number): boolean {
-  const downloadedAtMs = new Date(version.downloadedAt).getTime();
+  const checkedAtMs = new Date(version.checkedAt || version.downloadedAt).getTime();
 
-  if (!Number.isFinite(downloadedAtMs)) {
+  if (!Number.isFinite(checkedAtMs)) {
     return false;
   }
 
-  return Date.now() - downloadedAtMs < intervalMs;
+  return Date.now() - checkedAtMs < intervalMs;
+}
+
+/** Файл прежний (или временно недоступен) — записываем время проверки без новой копии. */
+async function markCachedVersionChecked(
+  cacheDir: string,
+  group: PublicGroupSource,
+  latest: CachedJournalVersion,
+): Promise<CachedJournalVersion> {
+  const meta = await readPublicCacheMeta(cacheDir);
+  if (!isCacheMetaForCurrentSource(meta, group.publicKey, group.publicPath) || meta.latestFileName !== latest.fileName) {
+    return latest;
+  }
+
+  const checkedAt = new Date().toISOString();
+  try {
+    await writePublicCacheMeta(cacheDir, { ...meta, checkedAt });
+  } catch (error) {
+    console.error('[journal-cache] Не удалось записать время проверки, используем прошлую копию:', error);
+    return latest;
+  }
+  return { ...latest, checkedAt };
 }
 
 async function cleanupOldCacheFiles(cacheDir: string, versionsToKeep: CachedJournalVersion[]): Promise<CachedJournalVersion[]> {
@@ -1006,24 +1091,28 @@ async function cleanupOldCacheFiles(cacheDir: string, versionsToKeep: CachedJour
   return keptVersions;
 }
 
-async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<CachedJournalVersion> {
+async function downloadPublicJournalToCache(
+  group: PublicGroupSource,
+  resourceMeta: PublicResourceMeta | null,
+): Promise<CachedJournalVersion> {
   const cacheDir = getGroupCacheDir(group);
   await fs.mkdir(cacheDir, { recursive: true });
 
-  const now = new Date();
-  const downloadedAt = now.toISOString();
   // Имя файла уже известно из списка групп — лишний запрос к API не нужен.
   // Имя, собранное из хвоста ссылки, известным не считается: иначе группа
   // навсегда останется «jr0lr00cUQp0FQ» — настоящее имя просто не спросят.
   const knownFileName = group.fileNameIsGuess ? '' : group.fileName?.trim();
-  const meta = knownFileName ? null : await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
-
   const downloaded = await getPublicDownloadBuffer(group.publicKey, group.publicPath).catch((error: unknown) => {
     const reason = error instanceof Error ? error.message : String(error);
+    const temporaryFailure = /(?:^|\D)(?:408|425|429|5\d\d)(?:\D|$)/.test(reason) ||
+      /fetch failed|timeout|timed out|AbortError|ETIMEDOUT|ECONNRESET|EAI_AGAIN/i.test(reason);
+    const advice = temporaryFailure
+      ? 'Похоже на временный сбой Яндекс.Диска или сети; сервер автоматически повторит загрузку.'
+      : 'Проверь, что публичный доступ к файлу включён и ссылка не была пересоздана.';
     throw new Error(
       `${reason} Ссылка: ${describePublicTarget(group)}. ` +
         `Ссылки берутся из переменной ${getActivePublicSourceEnvName()}. ` +
-        'Проверь, что публичный доступ к файлу включён и ссылка не была пересоздана.',
+        advice,
     );
   });
   const buffer = downloaded.buffer;
@@ -1035,8 +1124,24 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
   // Третий способ узнать имя — заголовок ответа на скачивание: он приходит
   // даже тогда, когда запрос метаданных не прошёл.
   const originalFileName = sanitizeFileName(
-    knownFileName || meta?.name || downloaded.fileName || group.fileName?.trim() || 'journal.xlsx',
+    knownFileName || resourceMeta?.name || downloaded.fileName || group.fileName?.trim() || 'journal.xlsx',
   );
+  // ZIP с расширением .xlsx ещё не означает журнал: если таблица битая или
+  // нужных листов/студентов нет, сохраняем предыдущую пригодную копию.
+  const { parseJournalWorkbook } = await import('@/lib/parseJournal');
+  const parsed = parseJournalWorkbook(buffer, {
+    buffer,
+    source: 'yandex-public-cache',
+    sourceDetails: group.publicPath || group.publicKey,
+    fileName: originalFileName,
+    groupNameHint: group.label || filenameToGroupName(originalFileName),
+  });
+  if (parsed.studentCount < 1 || parsed.subjectCount < 1) {
+    throw new Error(`Скачанный файл ${describePublicTarget(group)} не содержит полноценного журнала.`);
+  }
+
+  const now = new Date();
+  const downloadedAt = now.toISOString();
   const extension = path.extname(originalFileName) || '.xlsx';
   const displayName = originalFileName;
   const cachedFileName = `journal-${timestampForFileName(now)}${extension}`;
@@ -1055,6 +1160,7 @@ async function downloadPublicJournalToCache(group: PublicGroupSource): Promise<C
     filePath: cachedFilePath,
     displayName,
     downloadedAt,
+    md5: crypto.createHash('md5').update(buffer).digest('hex'),
     publicKey: group.publicKey,
     publicPath: group.publicPath,
   };
@@ -1095,12 +1201,18 @@ async function ensureFreshCachedPublicJournal(
     return running;
   }
 
-  const refreshPromise = downloadPublicJournalToCache(group)
-    .catch((error) => {
+  const refreshPromise = (async () => {
+    const resourceMeta = await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
+    if (latest?.md5 && resourceMeta?.md5 && latest.md5 === resourceMeta.md5) {
+      return markCachedVersionChecked(cacheDir, group, latest);
+    }
+    return downloadPublicJournalToCache(group, resourceMeta);
+  })()
+    .catch(async (error) => {
       // Не смогли скачать новую копию — отдаём прошлую, чтобы сайт и бот не падали.
       if (latest) {
         console.error('[journal-cache] Не удалось обновить журнал, отдаём прошлую копию:', error);
-        return latest;
+        return markCachedVersionChecked(cacheDir, group, latest);
       }
       throw error;
     })
@@ -1113,31 +1225,83 @@ async function ensureFreshCachedPublicJournal(
 }
 
 async function refreshAllPublicJournals(options: { force?: boolean } = {}): Promise<void> {
-  const groups = await resolvePublicGroups({ force: options.force });
+  // Список групп почти не меняется: его отдельный TTL не добавляет лишние
+  // обращения к API каждую минуту. Изменение env всё равно сбрасывает кэш.
+  const groups = await resolvePublicGroups();
+  let failedGroups = 0;
+  let activeWatches = 0;
+  const waitingWatches: Array<() => void> = [];
+  const watchTasks: Array<{ group: PublicGroupSource; promise: Promise<void> }> = [];
 
-  for (const group of groups) {
+  const watchRefreshedGroup = async (group: PublicGroupSource): Promise<void> => {
+    if (activeWatches >= MAX_PARALLEL_GROUP_REFRESHES) {
+      await new Promise<void>((resolve) => waitingWatches.push(resolve));
+    } else {
+      activeWatches += 1;
+    }
+
+    try {
+      const groupRef = buildPublicGroupRef(group);
+      const [{ getJournalDataByPath }, { watchGroup }] = await Promise.all([
+        import('@/lib/journal'),
+        import('@/lib/grade-watch'),
+      ]);
+      const data = await getJournalDataByPath(groupRef.filePath);
+      await watchGroup(groupRef.id, groupRef.groupName, data);
+    } finally {
+      const next = waitingWatches.shift();
+      if (next) {
+        next();
+      } else {
+        activeWatches -= 1;
+      }
+    }
+  };
+
+  await mapWithConcurrency(groups, MAX_PARALLEL_GROUP_REFRESHES, async (group) => {
     try {
       await ensureFreshCachedPublicJournal(group, options);
+      // Каждую группу проверяем на новые оценки сразу после её обновления,
+      // освобождая слот скачивания для следующей группы.
+      const promise = watchRefreshedGroup(group);
+      void promise.catch(() => undefined);
+      watchTasks.push({ group, promise });
     } catch (error) {
+      failedGroups += 1;
       console.error(`[journal-cache] Группа «${group.label || group.fileName}» не обновилась:`, error);
     }
+  });
+
+  const watchResults = await Promise.allSettled(watchTasks.map((task) => task.promise));
+  watchResults.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      failedGroups += 1;
+      const group = watchTasks[index].group;
+      console.error(`[уведомления] Группа «${group.label || group.fileName}» пропущена:`, result.reason);
+    }
+  });
+
+  if (failedGroups > 0 && failedGroups < groups.length) {
+    // Успешные группы уже готовы. Оставшиеся попробует следующий минутный тик;
+    // повтор всего списка сейчас задержал бы их и увеличил нагрузку на Яндекс.
+    console.error(`[journal-cache] Не обновились журналы ${failedGroups} из ${groups.length} групп; повторим через интервал.`);
+  } else if (failedGroups === groups.length && groups.length > 0) {
+    throw new Error(`Не обновились журналы ${failedGroups} из ${groups.length} групп.`);
   }
 }
 
-/**
- * Проверка новых оценок после каждого обновления журналов.
- *
- * Импорт ленивый: lib/grade-watch тянет за собой разбор журнала, а тот —
- * снова этот файл. Статический импорт замкнул бы круг.
- */
-async function runGradeWatchSafely(): Promise<void> {
-  try {
-    const { runGradeWatch } = await import('@/lib/grade-watch');
-    await runGradeWatch();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[уведомления] Проход не удался: ${message}`);
+/** Один проход включает скачивание и проверку оценок; новый тик не накладывается на предыдущий. */
+function runRefreshCycle(): Promise<void> {
+  const runtime = getCacheRuntime();
+  if (runtime.cyclePromise) {
+    return runtime.cyclePromise;
   }
+
+  const cycle = refreshAllPublicJournals({ force: true }).finally(() => {
+    runtime.cyclePromise = undefined;
+  });
+  runtime.cyclePromise = cycle;
+  return cycle;
 }
 
 function startPublicCacheRefreshLoop(): void {
@@ -1151,8 +1315,7 @@ function startPublicCacheRefreshLoop(): void {
     if (!isWithinRefreshWindow()) {
       return;
     }
-    void refreshAllPublicJournals({ force: true })
-      .then(() => runGradeWatchSafely())
+    void runRefreshCycle()
       .catch((error) => {
         console.error('[journal-cache] Не удалось обновить журнал:', error);
       });
@@ -1171,7 +1334,7 @@ export async function startJournalCache(): Promise<void> {
   // Стартовая загрузка с повторами: сеть при старте сервера иногда недоступна пару секунд.
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      await refreshAllPublicJournals({ force: true });
+      await runRefreshCycle();
       return;
     } catch (error) {
       if (attempt === 3) {
@@ -1203,8 +1366,24 @@ async function resolvePublicGroupForPath(filePath?: string): Promise<PublicGroup
 async function readFromCachedPublicYandexDisk(filePath?: string): Promise<JournalFileResult> {
   startPublicCacheRefreshLoop();
   const group = await resolvePublicGroupForPath(filePath);
-  const cached = await ensureFreshCachedPublicJournal(group);
-  const buffer = await fs.readFile(cached.filePath);
+  // При истёкшем TTL отдаём рабочую копию сразу. Проверка Яндекса идёт в фоне:
+  // временный 500 не должен задерживать страницы сайта и ответы бота.
+  const previous = await getValidLatestCachedVersion(getGroupCacheDir(group), group.publicKey, group.publicPath);
+  if (previous && !shouldUseCachedVersion(previous, getPublicCacheIntervalMs()) && isWithinRefreshWindow()) {
+    void ensureFreshCachedPublicJournal(group).catch((error) => {
+      console.error('[journal-cache] Не удалось обновить журнал в фоне:', error);
+    });
+  }
+
+  let cached = previous ?? await ensureFreshCachedPublicJournal(group);
+  let buffer: Buffer;
+  try {
+    buffer = await fs.readFile(cached.filePath);
+  } catch {
+    // Пока читали файл, параллельное обновление могло удалить старую копию.
+    cached = await ensureFreshCachedPublicJournal(group);
+    buffer = await fs.readFile(cached.filePath);
+  }
 
   return {
     buffer,
@@ -1212,6 +1391,7 @@ async function readFromCachedPublicYandexDisk(filePath?: string): Promise<Journa
     sourceDetails: `${cached.filePath} ← ${cached.publicPath || cached.publicKey}`,
     fileName: cached.displayName,
     groupNameHint: group.label || filenameToGroupName(cached.displayName),
+    updatedAt: cached.downloadedAt,
   };
 }
 
@@ -1239,9 +1419,7 @@ export async function listJournalFiles(): Promise<JournalGroupRef[]> {
     // скачивании — тогда оно лежит в описании кэша этой группы.
     const named = await Promise.all(groups.map((group) => withLearnedFileName(group)));
 
-    return named.map((group) =>
-      buildGroupRef('yandex-public-cache', encodePublicGroupPath(group), group.fileName, group.label),
-    );
+    return named.map(buildPublicGroupRef);
   }
 
   return listLocalJournalFiles();
