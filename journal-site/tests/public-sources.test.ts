@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,37 +5,16 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as XLSX from 'xlsx';
 
-import { setSubscriptionStoreForTests } from '@/lib/subscriptions';
-import {
-  getPublicSourcesInfo,
-  listJournalFiles,
-  loadJournalFile,
-  recoverPublicJournalFileFromBrowser,
-  startJournalCache,
-} from '@/lib/yandex-disk';
-import { buildJournalWorkbook } from './helpers/journal-fixture';
+import { getPublicSourcesInfo, listJournalFiles, loadJournalFile } from '@/lib/yandex-disk';
 
 const FILE_A = 'https://disk.yandex.ru/i/aaaaaaaaaaaaaa';
 const FILE_B = 'https://disk.yandex.ru/i/bbbbbbbbbbbbbb';
 const FOLDER = 'https://disk.yandex.ru/d/ffffffffffffff';
-const EXISTING_GROUPS = [
-  ['https://disk.yandex.ru/i/jr0lr00cUQp0FQ', 'ИСиП(Р)-24-1.xlsx', 'X0p3qpi4K5zZhKZU'],
-  ['https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg', 'РУПО-26-1.xlsx', 'rjrCcrvyk6KZ3aHV'],
-  ['https://disk.yandex.ru/i/ezTOIqg1oAictA', 'ИБ 26-2.xlsx', 'VkYOwj-4KoT2m9y_'],
-  ['https://disk.yandex.ru/i/n2Ldf1ar5jbjJg', 'ПД-25-2.xlsx', 'H2be0UpJGvfFhj1m'],
-  ['https://disk.yandex.ru/i/WtnnnWnxsUUoZw', 'ПД-25-3.xlsx', 'KDe8a9WOKaPeTtqb'],
-  ['https://disk.yandex.ru/i/kORWvg2JaCqGQw', 'ЮР-24-1.xlsx', 'F4SaPdO2RQ-FCI3J'],
-  ['https://disk.yandex.ru/i/mzbfhA6hE_MWSA', 'ИБ-24-1.xlsx', 'Ym2xG1J7QX2_Qnvd'],
-  ['https://disk.yandex.ru/i/NIRLGEBZ9kcE8g', 'ПД-25-1.xlsx', 'AUdmADooLxxqFu79'],
-  ['https://disk.yandex.ru/i/pTtJyYNVAxv_9w', 'ПД-24-1.xlsx', 'jnhy2jHvh-DXabW7'],
-  ['https://disk.yandex.ru/i/DqRcoPsqQh233g', 'ПД-24-2.xlsx', 'DxMjFq_nlU3zMRg3'],
-] as const;
 
 const fileNames: Record<string, string> = {
   [FILE_A]: 'ИСиП-25-9.xlsx',
   [FILE_B]: 'ИСиП-24-9.xlsx',
 };
-const originalFileNames = { ...fileNames };
 
 const folderTree: Record<string, unknown> = {
   '': {
@@ -68,38 +46,12 @@ let downloadFailures = 0;
 let metaIsDown = false;
 let downloadReturnsLoginPage = false;
 let apiIsDown = false;
-let downloadApiStatus = 0;
-let metadataBarrier: Promise<void> | null = null;
-let blockedDownloadKey: string | null = null;
-let downloadBarrier: Promise<void> | null = null;
-const malformedRemoteRevisions = new Set<string>();
-const remoteRevisions = new Map<string, number>();
-const remoteBuffers = new Map<string, Buffer>();
 
 /** Настоящая книга Excel с меткой в A1 — по ней тест узнаёт, откуда файл. */
 function workbookFor(marker: string): Buffer {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([[marker]]), 'Лист1');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
-}
-
-function remoteWorkbook(publicKey: string, innerPath: string): Buffer {
-  const revision = remoteRevisions.get(publicKey) ?? 1;
-  const key = `${publicKey}::${innerPath}::${revision}`;
-  let buffer = remoteBuffers.get(key);
-  if (!buffer) {
-    if (malformedRemoteRevisions.has(`${publicKey}::${revision}`)) {
-      buffer = workbookFor(key);
-    } else {
-      const fixture = buildJournalWorkbook({ groupName: publicKey === FILE_B ? 'ИСиП-24/9' : 'ИСиП-25/9' });
-      const workbook = XLSX.read(fixture, { type: 'buffer' });
-      // Маркер в A1 помогает увидеть версию файла, не ломая его структуру.
-      workbook.Sheets[workbook.SheetNames[0]].A1 = { t: 's', v: key };
-      buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
-    }
-    remoteBuffers.set(key, buffer);
-  }
-  return buffer;
 }
 
 function markerOf(buffer: Buffer): string {
@@ -123,42 +75,21 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
 
   if (target.pathname === '/v1/disk/public/resources') {
     listCalls += 1;
-    if (metadataBarrier) {
-      await metadataBarrier;
-    }
     if (metaIsDown) {
       return json({ description: 'Service Unavailable' }, 503);
     }
     if (key === FOLDER) {
       const node = folderTree[innerPath];
-      return node
-        ? json(node)
-        : json({
-          name: path.posix.basename(innerPath),
-          type: 'file',
-          md5: crypto.createHash('md5').update(remoteWorkbook(key, innerPath)).digest('hex'),
-        });
+      return node ? json(node) : json({ name: path.posix.basename(innerPath), type: 'file' });
     }
-    return fileNames[key]
-      ? json({
-        name: fileNames[key],
-        type: 'file',
-        md5: crypto.createHash('md5').update(remoteWorkbook(key, innerPath)).digest('hex'),
-      })
-      : json({ description: 'Not found' }, 404);
+    return fileNames[key] ? json({ name: fileNames[key], type: 'file' }) : json({ description: 'Not found' }, 404);
   }
 
   if (target.pathname === '/v1/disk/public/resources/download') {
-    if (downloadApiStatus) {
-      return json({ description: 'Internal Server Error' }, downloadApiStatus);
-    }
     return json({ href: `https://dl.test/f?k=${encodeURIComponent(key)}&p=${encodeURIComponent(innerPath)}` });
   }
 
   if (target.hostname === 'dl.test') {
-    if (target.searchParams.get('k') === blockedDownloadKey && downloadBarrier) {
-      await downloadBarrier;
-    }
     if (downloadFailures > 0) {
       downloadFailures -= 1;
       return new Response('nope', { status: 503, statusText: 'Service Unavailable' });
@@ -171,7 +102,7 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
       });
     }
     downloads += 1;
-    const workbook = remoteWorkbook(target.searchParams.get('k') ?? '', target.searchParams.get('p') ?? '');
+    const workbook = workbookFor(`${target.searchParams.get('k')}::${target.searchParams.get('p')}`);
     const name = fileNames[target.searchParams.get('k') ?? ''] ?? 'journal.xlsx';
 
     // Яндекс присылает имя файла вместе со скачиванием, кириллицу —
@@ -195,25 +126,14 @@ async function expireCachedCopy(): Promise<void> {
   for (const dir of dirs) {
     const metaPath = path.join(cacheRoot, dir.name, 'latest.json');
     const meta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as {
-      checkedAt: string;
+      downloadedAt: string;
+      versions: Array<{ downloadedAt: string }>;
     };
 
-    meta.checkedAt = new Date(0).toISOString();
+    meta.downloadedAt = new Date(0).toISOString();
+    meta.versions = meta.versions.map((version) => ({ ...version, downloadedAt: new Date(0).toISOString() }));
     await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf8');
   }
-}
-
-async function waitForBackgroundCheck(): Promise<void> {
-  await vi.waitFor(async () => {
-    const dirs = (await fs.readdir(cacheRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory());
-    for (const dir of dirs) {
-      const metaPath = path.join(cacheRoot, dir.name, 'latest.json');
-      const meta = JSON.parse(await fs.readFile(metaPath, 'utf8')) as { checkedAt: string };
-      expect(meta.checkedAt).not.toBe(new Date(0).toISOString());
-    }
-  }, { timeout: 5_000, interval: 10 });
-  const running = [...(globalThis.__journalPublicCacheRuntime?.refreshPromises?.values() ?? [])];
-  await Promise.allSettled(running);
 }
 
 function resetRuntime(): void {
@@ -233,17 +153,6 @@ beforeEach(async () => {
   metaIsDown = false;
   downloadReturnsLoginPage = false;
   apiIsDown = false;
-  downloadApiStatus = 0;
-  metadataBarrier = null;
-  blockedDownloadKey = null;
-  downloadBarrier = null;
-  malformedRemoteRevisions.clear();
-  for (const key of Object.keys(fileNames)) {
-    delete fileNames[key];
-  }
-  Object.assign(fileNames, originalFileNames);
-  remoteRevisions.clear();
-  remoteBuffers.clear();
   resetRuntime();
 
   process.env.JOURNAL_SOURCE = 'yandex-public-cache';
@@ -258,7 +167,6 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  setSubscriptionStoreForTests(null);
   resetRuntime();
   vi.unstubAllGlobals();
   await fs.rm(cacheRoot, { recursive: true, force: true });
@@ -287,38 +195,17 @@ describe('список групп из публичных ссылок', () => {
     expect(new Set(groups.map((group) => group.id)).size).toBe(2);
   });
 
-  it('сохраняет опубликованные ID всех действующих групп для подписок', async () => {
-    for (const [link, fileName] of EXISTING_GROUPS) {
-      fileNames[link] = fileName;
-    }
-    process.env.YANDEX_DISK_PUBLIC_URLS = EXISTING_GROUPS.map(([link]) => link).join(',');
+  it('не показывает две отменённые группы, даже если ссылки остались в Render', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = [
+      FILE_A,
+      'https://disk.yandex.ru/i/pTtJyYNVAxv_9w',
+      FILE_B,
+      'https://disk.yandex.ru/i/DqRcoPsqQh233g',
+    ].join(',');
 
+    expect(getPublicSourcesInfo().linkCount).toBe(2);
     const groups = await listJournalFiles();
-    const byFileName = new Map(groups.map((group) => [group.fileName, group.id]));
-    for (const [, fileName, id] of EXISTING_GROUPS) {
-      expect(byFileName.get(fileName)).toBe(id);
-    }
-  });
-
-  it('переименование файла и подписи не меняет ID группы', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const before = (await listJournalFiles())[0];
-
-    fileNames[FILE_A] = 'Новое имя.xlsx';
-    const groupsPath = path.join(cacheRoot, 'groups.json');
-    const cached = JSON.parse(await fs.readFile(groupsPath, 'utf8')) as { fetchedAt: string };
-    cached.fetchedAt = new Date(0).toISOString();
-    await fs.writeFile(groupsPath, JSON.stringify(cached), 'utf8');
-    await listJournalFiles();
-    await globalThis.__journalPublicCacheRuntime?.groupsPromise;
-    const renamed = (await listJournalFiles())[0];
-    expect(renamed.fileName).toBe('Новое имя.xlsx');
-    expect(renamed.id).toBe(before.id);
-
-    process.env.YANDEX_DISK_PUBLIC_URLS = `Своя подпись = ${FILE_A}`;
-    const relabeled = (await listJournalFiles())[0];
-    expect(relabeled.groupName).toBe('Своя подпись');
-    expect(relabeled.id).toBe(before.id);
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-24/9', 'ИСиП-25/9']);
   });
 
   // Ровно та ошибка, что случилась на боевом сервере: список вписали в старую переменную.
@@ -356,42 +243,6 @@ describe('список групп из публичных ссылок', () => {
     expect(listCalls).toBe(callsAfterFirst);
   });
 
-  it('просроченный список возвращается сразу, пока обновляется в фоне', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    await listJournalFiles();
-
-    const groupsPath = path.join(cacheRoot, 'groups.json');
-    const cached = JSON.parse(await fs.readFile(groupsPath, 'utf8')) as { fetchedAt: string };
-    cached.fetchedAt = new Date(0).toISOString();
-    await fs.writeFile(groupsPath, JSON.stringify(cached), 'utf8');
-
-    let releaseMetadata = () => {};
-    metadataBarrier = new Promise<void>((resolve) => {
-      releaseMetadata = resolve;
-    });
-
-    let timeout: NodeJS.Timeout | undefined;
-    let result: Awaited<ReturnType<typeof listJournalFiles>> | 'slow';
-    try {
-      result = await Promise.race([
-        listJournalFiles(),
-        new Promise<'slow'>((resolve) => {
-          timeout = setTimeout(() => resolve('slow'), 1_000);
-        }),
-      ]);
-    } finally {
-      clearTimeout(timeout);
-      releaseMetadata();
-      metadataBarrier = null;
-    }
-
-    expect(result).not.toBe('slow');
-    if (result !== 'slow') {
-      expect(result[0].groupName).toBe('ИСиП-25/9');
-    }
-    await globalThis.__journalPublicCacheRuntime?.groupsPromise;
-  });
-
   it('без ссылок объясняет, что задать', async () => {
     await expect(listJournalFiles()).rejects.toThrow(/YANDEX_DISK_PUBLIC_URLS/);
   });
@@ -424,76 +275,6 @@ describe('загрузка журнала группы', () => {
     expect(downloads).toBe(afterFirst);
   });
 
-  it('по прежнему md5 не скачивает неизменившийся журнал повторно', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-
-    const groups = await listJournalFiles();
-    await loadJournalFile(groups[0].filePath);
-    await expireCachedCopy();
-
-    const same = await loadJournalFile(groups[0].filePath);
-    expect(markerOf(same.buffer)).toContain(FILE_A);
-    expect(downloads).toBe(1);
-    await waitForBackgroundCheck();
-
-    // После проверки md5 обычный запрос опять берёт свежую копию из кэша.
-    const checks = listCalls;
-    await loadJournalFile(groups[0].filePath);
-    expect(listCalls).toBe(checks);
-  });
-
-  it('после изменения md5 скачивает и отдаёт новую версию', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-
-    const groups = await listJournalFiles();
-    await loadJournalFile(groups[0].filePath);
-    await expireCachedCopy();
-    remoteRevisions.set(FILE_A, 2);
-
-    const stale = await loadJournalFile(groups[0].filePath);
-    expect(markerOf(stale.buffer)).toContain('::1');
-    await waitForBackgroundCheck();
-    const changed = await loadJournalFile(groups[0].filePath);
-    expect(markerOf(changed.buffer)).toContain('::2');
-    expect(downloads).toBe(2);
-  });
-
-  it('со старой копией ответ не ждёт медленный Яндекс', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const groups = await listJournalFiles();
-    await loadJournalFile(groups[0].filePath);
-    await expireCachedCopy();
-    remoteRevisions.set(FILE_A, 2);
-
-    let releaseMetadata = () => {};
-    metadataBarrier = new Promise<void>((resolve) => {
-      releaseMetadata = resolve;
-    });
-
-    let timeout: NodeJS.Timeout | undefined;
-    const loading = loadJournalFile(groups[0].filePath);
-    let result: Awaited<typeof loading> | 'slow';
-    try {
-      result = await Promise.race([
-        loading,
-        new Promise<'slow'>((resolve) => {
-          timeout = setTimeout(() => resolve('slow'), 1_000);
-        }),
-      ]);
-    } finally {
-      clearTimeout(timeout);
-      releaseMetadata();
-      metadataBarrier = null;
-    }
-
-    expect(result).not.toBe('slow');
-    if (result !== 'slow') {
-      expect(markerOf(result.buffer)).toContain('::1');
-    }
-    await waitForBackgroundCheck();
-    expect(markerOf((await loadJournalFile(groups[0].filePath)).buffer)).toContain('::2');
-  });
-
   it('старые ссылки на группу продолжают открываться', async () => {
     process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
 
@@ -508,19 +289,15 @@ describe('загрузка журнала группы', () => {
     process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
 
     const groups = await listJournalFiles();
-    const good = await loadJournalFile(groups[0].filePath);
+    await loadJournalFile(groups[0].filePath);
 
     await expireCachedCopy();
     // Валим все попытки, включая повторные: иначе проверялся бы повтор,
     // а не запасная копия.
     downloadFailures = 99;
-    remoteRevisions.set(FILE_A, 2);
 
     const stale = await loadJournalFile(groups[0].filePath);
     expect(markerOf(stale.buffer)).toContain(FILE_A);
-    expect(stale.updatedAt).toBe(good.updatedAt);
-    await waitForBackgroundCheck();
-    expect(downloadFailures).toBe(96);
   });
 
   it('разовая осечка сети не оставляет группу без журнала', async () => {
@@ -562,34 +339,10 @@ describe('загрузка журнала группы', () => {
 
     await expireCachedCopy();
     downloadReturnsLoginPage = true;
-    remoteRevisions.set(FILE_A, 2);
 
     const still = await loadJournalFile(groups[0].filePath);
     expect(markerOf(still.buffer)).toContain(FILE_A);
     expect(still.buffer.subarray(0, 2).toString()).toBe('PK');
-    await waitForBackgroundCheck();
-  });
-
-  it('битая книга Excel не заменяет проверенный журнал', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const groups = await listJournalFiles();
-    const good = await loadJournalFile(groups[0].filePath);
-    await expireCachedCopy();
-    remoteRevisions.set(FILE_A, 2);
-    malformedRemoteRevisions.add(`${FILE_A}::2`);
-
-    const stale = await loadJournalFile(groups[0].filePath);
-    await waitForBackgroundCheck();
-    const after = await loadJournalFile(groups[0].filePath);
-
-    expect(markerOf(stale.buffer)).toContain('::1');
-    expect(markerOf(after.buffer)).toContain('::1');
-    expect(after.sourceDetails).toBe(good.sourceDetails);
-    const dirs = (await fs.readdir(cacheRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory());
-    const meta = JSON.parse(await fs.readFile(path.join(cacheRoot, dirs[0].name, 'latest.json'), 'utf8')) as {
-      versions: unknown[];
-    };
-    expect(meta.versions).toHaveLength(1);
   });
 
   it('хранит не больше JOURNAL_CACHE_MAX_FILES копий на группу', async () => {
@@ -597,11 +350,7 @@ describe('загрузка журнала группы', () => {
 
     const groups = await listJournalFiles();
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      remoteRevisions.set(FILE_A, attempt + 1);
       await loadJournalFile(groups[0].filePath);
-      if (attempt > 0) {
-        await waitForBackgroundCheck();
-      }
       await expireCachedCopy();
     }
 
@@ -623,104 +372,5 @@ describe('загрузка журнала группы', () => {
     await expect(loadJournalFile(groups[0].filePath)).rejects.toThrow(
       new RegExp(`404.*${FILE_A}.*YANDEX_DISK_PUBLIC_URL`, 's'),
     );
-  });
-
-  it('ошибка 500 от Яндекса объясняется как временный сбой', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const groups = await listJournalFiles();
-    downloadApiStatus = 500;
-
-    await expect(loadJournalFile(groups[0].filePath)).rejects.toThrow(/500.*временный сбой/i);
-  });
-
-  it('при ошибке скачивания с сервера принимает проверенный журнал из браузера', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const group = (await listJournalFiles())[0];
-    downloadApiStatus = 500;
-
-    await expect(loadJournalFile(group.filePath)).rejects.toThrow(/500/);
-    await recoverPublicJournalFileFromBrowser(group.filePath, remoteWorkbook(FILE_A, ''));
-
-    const recovered = await loadJournalFile(group.filePath);
-    expect(markerOf(recovered.buffer)).toContain(`${FILE_A}::::1`);
-    expect(downloads).toBe(0);
-  });
-
-  it('не заменяет рабочую копию файлом с неверной контрольной суммой', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
-    const group = (await listJournalFiles())[0];
-    const original = await loadJournalFile(group.filePath);
-    remoteRevisions.set(FILE_A, 2);
-
-    await expect(recoverPublicJournalFileFromBrowser(group.filePath, original.buffer)).rejects.toThrow(
-      /отличается от текущего журнала на Яндексе/i,
-    );
-
-    const stillWorking = await loadJournalFile(group.filePath);
-    expect(markerOf(stillWorking.buffer)).toContain(`${FILE_A}::::1`);
-    expect(stillWorking.sourceDetails).toBe(original.sourceDetails);
-    expect(downloads).toBe(1);
-  });
-
-  it('быстрая группа получает стартовый снимок до медленной, одновременные циклы не дублируются', async () => {
-    process.env.YANDEX_DISK_PUBLIC_URLS = `${FILE_A},${FILE_B}`;
-    const groups = await listJournalFiles();
-    const fastId = groups.find((group) => group.groupName === 'ИСиП-25/9')!.id;
-    const slowId = groups.find((group) => group.groupName === 'ИСиП-24/9')!.id;
-    const writes = new Map<string, number>();
-    let finishFast = () => {};
-    const fastWritten = new Promise<void>((resolve) => {
-      finishFast = resolve;
-    });
-
-    setSubscriptionStoreForTests({
-      listByGroup: async () => [],
-      listByChat: async () => [],
-      save: async () => {},
-      remove: async () => {},
-      stageNotificationsAndSnapshot: async () => {},
-      listPendingMessages: async () => [],
-      ackPendingMessage: async () => {},
-      readSnapshot: async () => null,
-      writeSnapshot: async (groupId) => {
-        writes.set(groupId, (writes.get(groupId) ?? 0) + 1);
-        if (groupId === fastId) {
-          finishFast();
-        }
-      },
-    });
-
-    blockedDownloadKey = FILE_B;
-    let releaseDownload = () => {};
-    downloadBarrier = new Promise<void>((resolve) => {
-      releaseDownload = resolve;
-    });
-
-    const firstStart = startJournalCache();
-    const secondStart = startJournalCache();
-    let timeout: NodeJS.Timeout | undefined;
-    let fastBeforeSlow = false;
-    let slowWasPending = false;
-    try {
-      fastBeforeSlow = await Promise.race([
-        fastWritten.then(() => true),
-        new Promise<false>((resolve) => {
-          timeout = setTimeout(() => resolve(false), 3_000);
-        }),
-      ]);
-      slowWasPending = !writes.has(slowId);
-    } finally {
-      clearTimeout(timeout);
-      releaseDownload();
-      downloadBarrier = null;
-      blockedDownloadKey = null;
-      await Promise.all([firstStart, secondStart]);
-    }
-
-    expect(fastBeforeSlow).toBe(true);
-    expect(slowWasPending).toBe(true);
-    expect(writes.get(fastId)).toBe(1);
-    expect(writes.get(slowId)).toBe(1);
-    expect(downloads).toBe(2);
   });
 });

@@ -95,8 +95,6 @@ export interface JournalFileResult {
   buffer: Buffer;
   source: JournalSource;
   sourceDetails: string;
-  /** Время последнего успешного получения файла, если источник его сохраняет. */
-  updatedAt?: string;
   fileName?: string;
   groupNameHint?: string;
 }

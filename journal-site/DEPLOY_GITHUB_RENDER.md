@@ -1,6 +1,6 @@
 # Публикация проекта на GitHub и Render
 
-Этот проект рассчитан на Render Web Service, потому что ему нужен сервер: приложение скачивает Excel с публичной ссылки Яндекс.Диска, хранит локальный кэш и запускает обновление каждую минуту, пока сервер работает.
+Этот проект рассчитан на Render Web Service, потому что ему нужен сервер: приложение скачивает Excel с публичной ссылки Яндекс.Диска, хранит локальный кэш и обновляет файл каждые 30 минут.
 
 ## 1. Проверка локально
 
@@ -53,19 +53,15 @@ git push -u origin main
 NODE_VERSION=20.11.1
 NEXT_TELEMETRY_DISABLED=1
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
-JOURNAL_CACHE_INTERVAL_MINUTES=1
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g
+JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=/tmp/journal-cache
-JOURNAL_REFRESH_FROM_HOUR=0
-JOURNAL_REFRESH_TO_HOUR=24
 ```
 
 `YANDEX_DISK_PUBLIC_URLS` — список групп. Несколько ссылок разделяются запятой или переносом строки,
 ссылка на папку разворачивается во все Excel-файлы внутри.
 Как добавлять группы и что проверять — в [`SETUP_GROUPS.md`](./SETUP_GROUPS.md).
-
-Если сервис уже создан, обнови в **Render → Environment** значения `JOURNAL_CACHE_INTERVAL_MINUTES=1` и `JOURNAL_REFRESH_FROM_HOUR=0`, затем сохрани изменения. Изменение `render.yaml` само по себе может не заменить переменные существующего сервиса.
 
 6. Нажми **Create Web Service**.
 
@@ -88,9 +84,9 @@ https://journal-site.onrender.com
 ## 5. Как будут обновляться журналы
 
 - При старте сервера скачивается актуальный Excel.
-- Потом сервер запускает проверку журналов каждую минуту, круглосуточно; время скачивания зависит от Яндекс.Диска и сети.
+- Потом сервер скачивает новую копию раз в 30 минут.
 - В кэше хранится только 2 последних файла.
-- На бесплатном Render сервис может засыпать; таймер в спящем процессе не работает. В корне репозитория есть GitHub Actions workflow `.github/workflows/journal-keep-awake.yml`: раз в 5 минут он обращается к `/api/groups`, чтобы поддерживать работу бесплатного сервиса. Расписание GitHub Actions иногда задерживается, поэтому строгую круглосуточную гарантию даёт только постоянно работающий сервер. Когда сервис просыпается, он скачивает актуальные журналы.
+- На бесплатном Render сервис может засыпать. Когда кто-то снова откроет сайт, сервер проснётся и заново скачает свежий Excel.
 
 ## 6. Если Render выдаст ошибку
 

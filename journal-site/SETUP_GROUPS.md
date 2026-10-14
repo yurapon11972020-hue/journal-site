@@ -33,7 +33,7 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 
    | Key | Value |
    |---|---|
-   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g` |
+   | `YANDEX_DISK_PUBLIC_URLS` | `https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g` |
 
 4. **Старую переменную `YANDEX_DISK_PUBLIC_URL` (без `S` на конце) удали** — кнопка с корзиной справа от строки.
    Если её оставить, ничего не сломается: она просто игнорируется, пока задана `YANDEX_DISK_PUBLIC_URLS`. Но чтобы потом не путаться, лучше удалить.
@@ -48,12 +48,17 @@ YANDEX_DISK_PUBLIC_URLS=ИСиП-25/9 = https://disk.yandex.ru/i/aaaa, ИСиП-
 https://ТВОЙ-АДРЕС.onrender.com/api/groups
 ```
 
-В ответе проверь количество групп и отсутствие ошибок:
+Ответ должен выглядеть так:
 
 ```json
 {
-  "count": 10,
-  "problems": []
+  "count": 6,
+  "problems": [],
+  "groups": [
+    { "groupName": "ИСиП-25-9", "url": "/group/..." },
+    { "groupName": "ИСиП-24-9", "url": "/group/..." },
+    { "groupName": "ИСиП-23-9", "url": "/group/..." }
+  ]
 }
 ```
 
@@ -63,7 +68,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 В поле `configured` видно, из какой переменной сервер взял ссылки и сколько их там —
 если `variable` показывает `YANDEX_DISK_PUBLIC_URL`, значит новую переменную сервер не увидел.
 
-`count` — сколько групп увидел сайт. Сейчас задано десять ссылок, поэтому должно быть `"count": 10`; в `groups` — десять групп, включая `ПД-24/1` и `ПД-24/2`.
+`count` — сколько групп увидел сайт. Сейчас в переменной шесть ссылок, значит должно быть `"count": 6`.
 Названия групп берутся из имён файлов на Яндекс.Диске — если они выглядят не так, как хочется,
 задай их сам: `ИСиП-25/9 = https://disk.yandex.ru/i/ССЫЛКА, ИСиП-24/9 = https://disk.yandex.ru/i/ССЫЛКА`.
 
@@ -77,7 +82,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 2. Допиши ссылку через запятую:
 
    ```env
-   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, https://disk.yandex.ru/i/WtnnnWnxsUUoZw, https://disk.yandex.ru/i/kORWvg2JaCqGQw, https://disk.yandex.ru/i/mzbfhA6hE_MWSA, https://disk.yandex.ru/i/NIRLGEBZ9kcE8g, https://disk.yandex.ru/i/pTtJyYNVAxv_9w, https://disk.yandex.ru/i/DqRcoPsqQh233g, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
+   https://disk.yandex.ru/i/jr0lr00cUQp0FQ, https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg, https://disk.yandex.ru/i/ezTOIqg1oAictA, https://disk.yandex.ru/i/n2Ldf1ar5jbjJg, https://disk.yandex.ru/i/WtnnnWnxsUUoZw, https://disk.yandex.ru/i/kORWvg2JaCqGQw, https://disk.yandex.ru/i/mzbfhA6hE_MWSA, https://disk.yandex.ru/i/NIRLGEBZ9kcE8g, ПКС-24/9 = https://disk.yandex.ru/i/СЛЕДУЮЩАЯ-ССЫЛКА
    ```
 
 3. **Save Changes** → дождись **Live** → проверь `/api/groups`.
@@ -87,7 +92,7 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 ### Ещё удобнее: одна ссылка на папку
 
 Если сложить все журналы в одну папку на Яндекс.Диске и открыть публичный доступ **на папку**, то в `YANDEX_DISK_PUBLIC_URLS` достаточно одной ссылки вида `https://disk.yandex.ru/d/...`.
-Тогда новая группа добавляется так: **просто положить новый Excel в папку**. Ничего на Render менять не нужно — сайт обнаружит файл при очередном обновлении списка групп (обычно в пределах 15 минут, если сервер работает).
+Тогда новая группа добавляется так: **просто положить новый Excel в папку**. Ничего на Render менять не нужно — сайт увидит файл при следующем обновлении (по умолчанию в пределах 30 минут).
 
 Правила для такой папки:
 - имя файла становится названием группы (`ИСиП-25-9.xlsx` → «ИСиП-25-9»);
@@ -124,15 +129,15 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 **Про обновление данных**
 
-- Обновление запускается каждые `JOURNAL_CACHE_INTERVAL_MINUTES` минут (на Render сейчас 1) в окне с `JOURNAL_REFRESH_FROM_HOUR` до `JOURNAL_REFRESH_TO_HOUR` по местному времени (сейчас 00:00–24:00 при `JOURNAL_TIMEZONE_OFFSET_HOURS=5`). Время скачивания зависит от Яндекс.Диска и сети.
-- Если групп станет больше или Яндекс.Диск начнёт ограничивать запросы, проверь логи Render и нагрузку сервера перед изменением интервала.
-- Если Яндекс временно недоступен, сайт продолжит показывать **последнюю скачанную копию**, если она есть. После перезапуска Render локальный кэш пуст, поэтому при сбое первой загрузки группа покажет ошибку до восстановления доступа.
+- Журнал перекачивается раз в `JOURNAL_CACHE_INTERVAL_MINUTES` минут (на Render сейчас 5) в окне с `JOURNAL_REFRESH_FROM_HOUR` до `JOURNAL_REFRESH_TO_HOUR` по местному времени (сейчас 05:00–24:00 при `JOURNAL_TIMEZONE_OFFSET_HOURS=5`).
+- Каждая группа качается отдельно. Если групп станет много (больше 5–7), **увеличь интервал** до 15–30 минут, чтобы не долбить Яндекс.Диск и не тормозить бесплатный сервер.
+- Если Яндекс временно недоступен, сайт продолжит показывать **последнюю скачанную копию**, а не упадёт.
 - То же самое, если по ссылке вместо Excel придёт страница входа (так бывает, когда доступ к файлу закрыли): сайт распознает подмену, не станет затирать рабочий журнал и будет показывать прошлую версию, пока ссылка снова не заработает.
 - На каждую группу хранится не больше `JOURNAL_CACHE_MAX_FILES` копий (сейчас 2), старые удаляются сами.
 
 **Про бесплатный тариф Render**
 
-- Сервис засыпает после ~15 минут без запросов. Во сне минутный таймер не работает. Для непрерывного минутного цикла нужен постоянно работающий тариф Render или внешний монитор, который регулярно обращается к сайту.
+- Сервис засыпает после ~15 минут без запросов. Первый заход после сна занимает 30–60 секунд — это нормально.
 - После пробуждения кэш пустой, журналы скачиваются заново.
 - Память ограничена. Если групп много, не увеличивай `JOURNAL_PARSED_CACHE_SIZE` (по умолчанию 4) без необходимости.
 
@@ -182,12 +187,10 @@ https://ТВОЙ-АДРЕС.onrender.com/api/groups
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
-JOURNAL_CACHE_INTERVAL_MINUTES=1
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g
+JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache
-JOURNAL_REFRESH_FROM_HOUR=0
-JOURNAL_REFRESH_TO_HOUR=24
 ```
 
 Запуск:
