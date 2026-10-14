@@ -357,6 +357,7 @@ def format_docx() -> None:
             paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     doc.save(OUTPUT)
+    OUTPUT.chmod(0o644)
 
 
 def main() -> None:
