@@ -4,6 +4,7 @@
 
 | Материал | Где смотреть |
 | --- | --- |
+| Единый редактируемый отчёт Word со схемами и макетами | [КТ2_Подпольный_журнал.docx](КТ2_Подпольный_журнал.docx) |
 | Актуализированное ТЗ, роли, MVP и соответствие функций экранам | [requirements.md](requirements.md) |
 | Карта сайта и переходы | [sitemap.md](sitemap.md) |
 | Пользовательские сценарии | [flows.md](flows.md) |
@@ -11,6 +12,8 @@
 | Правила адаптации, UI Kit и состояния | [ui-kit.md](ui-kit.md) |
 | Задачи команды, ссылки и отчёт о вкладе | [team-report.md](team-report.md) |
 | Редактируемый кликабельный прототип | [prototype/index.html](prototype/index.html), [стили](prototype/styles.css), [логика](prototype/prototype.js) |
+
+Word-файл собирается из текстовых источников и PNG командой `python3 docs/ux/build_docx.py` из корня приложения. Для повторной сборки нужны Pandoc, Graphviz и Python-пакет `python-docx`.
 
 ## Графические макеты и экспорты
 
