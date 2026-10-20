@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
+import { kickBroadcastDrain } from '@/lib/broadcast-scheduler';
+import { getBroadcastStore } from '@/lib/broadcast-store';
 import { getScheduleData } from '@/lib/lecture-sources';
 import { getLectureStore, type LectureMode } from '@/lib/lecture-subscriptions';
 import { getSubscriptionStore, type Subscription } from '@/lib/subscriptions';
-import { answerCallback, editMessage, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
+import { answerCallback, deleteMessage, editMessage, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
 import { findLectureGroup, lectureGroupsScreen, lectureSettingsScreen } from '@/lib/telegram-lecture-views';
 import {
   notifyMenuScreen,
@@ -34,17 +36,90 @@ export const maxDuration = 60;
 
 interface TelegramUpdate {
   message?: {
-    chat: { id: number };
+    message_id?: number;
+    from?: { id: number };
+    chat: { id: number; type?: string };
     text?: string;
   };
   callback_query?: {
     id: string;
     data?: string;
     message?: {
-      chat: { id: number };
+      chat: { id: number; type?: string };
       message_id: number;
     };
   };
+}
+
+/** Рассылка включается только при ID владельца и пароле в окружении Render. */
+function broadcastCredentials(): { adminId: number; password: string } | null {
+  const rawId = process.env.TELEGRAM_BROADCAST_ADMIN_ID?.trim() ?? '';
+  const password = process.env.TELEGRAM_BROADCAST_PASSWORD?.trim() ?? '';
+  if (!/^\d+$/.test(rawId) || password.length < 16) return null;
+  const adminId = Number(rawId);
+  return Number.isSafeInteger(adminId) && adminId > 0 ? { adminId, password } : null;
+}
+
+/** Пароль отдельным сообщением разрешает ровно одно следующее сообщение. */
+async function handleBroadcastMessage(message: NonNullable<TelegramUpdate['message']>): Promise<boolean> {
+  const { chat, from, message_id: messageId } = message;
+  if (chat.type !== 'private' || from?.id !== chat.id) return false;
+  const text = message.text?.trim() ?? '';
+
+  if (/^\/myid(?:@[\w]+)?$/i.test(text)) {
+    await sendMessage(chat.id, `Ваш Telegram ID: <code>${chat.id}</code>`);
+    return true;
+  }
+
+  const credentials = broadcastCredentials();
+  if (!credentials || chat.id !== credentials.adminId) return false;
+
+  if (/^\/broadcast_status(?:@[\w]+)?$/i.test(text)) {
+    const status = await getBroadcastStore().latestStatus(chat.id);
+    await sendMessage(chat.id, status
+      ? `Рассылка №${status.jobId}: отправлено ${status.sent}, ошибок ${status.failed}, осталось ${status.pending} из ${status.recipientCount}.`
+      : 'Рассылок ещё не было.');
+    return true;
+  }
+
+  if (/^\/cancel(?:@[\w]+)?$/i.test(text)) {
+    await getBroadcastStore().cancel(chat.id);
+    await sendMessage(chat.id, 'Подготовка рассылки отменена.');
+    return true;
+  }
+
+  if (messageId && safeCompare(text, credentials.password)) {
+    const newlyArmed = await getBroadcastStore().arm(chat.id, messageId);
+    if (newlyArmed) {
+      await deleteMessage(chat.id, messageId);
+      await sendMessage(chat.id, 'Пароль принят. Отправьте одно сообщение в течение 5 минут — бот перешлёт его всем своим пользователям. Для отмены: /cancel');
+    }
+    return true;
+  }
+
+  // Команды не могут стать случайным содержимым массового сообщения.
+  if (text.startsWith('/') || !messageId) return false;
+
+  const queued = await getBroadcastStore().enqueueArmedMessage(chat.id, messageId);
+  if (!queued) return false;
+
+  if (queued.created) {
+    await sendMessage(chat.id, `Рассылка №${queued.jobId} поставлена в очередь для ${queued.recipientCount} чатов. Ход отправки: /broadcast_status`);
+    void kickBroadcastDrain().catch((error) => {
+      console.error('[broadcast] Не удалось начать отправку:', error);
+    });
+  }
+  return true;
+}
+
+async function rememberPrivateChat(chatId: number, chatType?: string): Promise<void> {
+  if (chatType !== 'private') return;
+  try {
+    await getBroadcastStore().rememberChat(chatId, chatType);
+  } catch (error) {
+    // Недоступность списка адресатов не должна ломать обычный журнал.
+    console.error('[broadcast] Не удалось сохранить чат:', error);
+  }
 }
 
 async function loadGroupData(groups: JournalGroupRef[], gi: number): Promise<{ data: JournalData; gi: number; group: JournalGroupRef }> {
@@ -257,6 +332,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
+  let adminBroadcastUpdate = false;
   try {
     if (update.callback_query) {
       const query = update.callback_query;
@@ -268,23 +344,38 @@ export async function POST(request: Request) {
       await answerCallback(query.id);
 
       if (chatId && messageId) {
+        await rememberPrivateChat(chatId, query.message?.chat.type);
         const screen = await buildScreen(action, chatId);
         const edited = await editMessage(chatId, messageId, screen.text, screen.buttons);
         if (!edited) {
           await sendMessage(chatId, screen.text, screen.buttons);
         }
       }
-    } else if (update.message?.text) {
+    } else if (update.message) {
       const chatId = update.message.chat.id;
-      const command = update.message.text.trim().split(/\s+/)[0];
-      const screen = await buildScreen(/^\/lectures(?:@[\w]+)?$/i.test(command) ? 'lg' : 'start', chatId);
-      await sendMessage(chatId, screen.text, screen.buttons);
+      adminBroadcastUpdate = update.message.chat.type === 'private'
+        && update.message.from?.id === chatId
+        && broadcastCredentials()?.adminId === chatId;
+      await rememberPrivateChat(chatId, update.message.chat.type);
+      if (await handleBroadcastMessage(update.message)) {
+        return NextResponse.json({ ok: true });
+      }
+      if (update.message.text) {
+        const command = update.message.text.trim().split(/\s+/)[0];
+        const screen = await buildScreen(/^\/lectures(?:@[\w]+)?$/i.test(command) ? 'lg' : 'start', chatId);
+        await sendMessage(chatId, screen.text, screen.buttons);
+      }
     }
   } catch (error) {
     console.error('[telegram] Ошибка обработки апдейта:', error);
+    // Telegram повторит апдейт, если база не успела сохранить секретную
+    // рассылку. Хранилище узнает повтор по ID сообщения и не создаст дубль.
+    if (adminBroadcastUpdate) {
+      return NextResponse.json({ ok: false }, { status: 503 });
+    }
   }
 
-  // Всегда отвечаем 200, иначе Telegram будет бесконечно повторять апдейт.
+  // Обычные ошибки журнала не должны заставлять Telegram повторять апдейт.
   return NextResponse.json({ ok: true });
 }
 

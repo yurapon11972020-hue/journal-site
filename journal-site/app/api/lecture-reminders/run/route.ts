@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { kickBroadcastDrain } from '@/lib/broadcast-scheduler';
 import { verifyLectureCronToken } from '@/lib/lecture-cron-auth';
 import { runLectureReminders } from '@/lib/lecture-reminders';
 
@@ -17,6 +18,9 @@ export async function POST(request: Request) {
 
   try {
     await runLectureReminders();
+    void kickBroadcastDrain().catch((error) => {
+      console.error('[broadcast] Проверка очереди не удалась:', error);
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
