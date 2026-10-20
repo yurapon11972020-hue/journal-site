@@ -16,16 +16,26 @@ const PUBLIC_CACHE_PATH_PREFIX = '__yandex_public_cache__::';
 const PUBLIC_CACHE_META_FILE = 'latest.json';
 const PUBLIC_CACHE_GROUPS_FILE = 'groups.json';
 const DEFAULT_PUBLIC_CACHE_INTERVAL_MINUTES = 30;
-// Render всё ещё хранит настройки из отменённого добавления двух групп.
-// До исправления Environment возвращаем прежние восемь групп и расписание.
-const REMOVED_PUBLIC_URLS = new Set([
+// В действующем Render может остаться вручную заданный список из восьми групп.
+// Для этого известного списка подключаем также две ранее присланные группы ПД-24.
+const ORIGINAL_GROUP_PUBLIC_URLS = [
+  'https://disk.yandex.ru/i/jr0lr00cUQp0FQ',
+  'https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg',
+  'https://disk.yandex.ru/i/ezTOIqg1oAictA',
+  'https://disk.yandex.ru/i/n2Ldf1ar5jbjJg',
+  'https://disk.yandex.ru/i/WtnnnWnxsUUoZw',
+  'https://disk.yandex.ru/i/kORWvg2JaCqGQw',
+  'https://disk.yandex.ru/i/mzbfhA6hE_MWSA',
+  'https://disk.yandex.ru/i/NIRLGEBZ9kcE8g',
+];
+const ADDITIONAL_GROUP_PUBLIC_URLS = [
   'https://disk.yandex.ru/i/pTtJyYNVAxv_9w',
   'https://disk.yandex.ru/i/DqRcoPsqQh233g',
-]);
+];
 
 function hasUnrevertedRenderSettings(): boolean {
   const configured = process.env.YANDEX_DISK_PUBLIC_URLS || process.env.YANDEX_DISK_PUBLIC_KEYS || '';
-  return [...REMOVED_PUBLIC_URLS].every((url) => configured.includes(url));
+  return ADDITIONAL_GROUP_PUBLIC_URLS.every((url) => configured.includes(url));
 }
 const DEFAULT_PUBLIC_CACHE_MAX_FILES = 2;
 const MAX_PUBLIC_FOLDER_DEPTH = 3;
@@ -310,7 +320,15 @@ function getPublicSources(): PublicSourceConfig[] {
     );
   }
 
-  const sources = parsePublicSourceList(raw).filter((source) => !REMOVED_PUBLIC_URLS.has(source.publicKey));
+  const sources = parsePublicSourceList(raw);
+  const configuredKeys = new Set(sources.map((source) => source.publicKey));
+  if (ORIGINAL_GROUP_PUBLIC_URLS.every((url) => configuredKeys.has(url))) {
+    for (const url of ADDITIONAL_GROUP_PUBLIC_URLS) {
+      if (!configuredKeys.has(url)) {
+        sources.push({ publicKey: url });
+      }
+    }
+  }
 
   if (!sources.length) {
     throw new Error(
