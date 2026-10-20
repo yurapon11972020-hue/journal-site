@@ -10,10 +10,25 @@ import { getPublicSourcesInfo, listJournalFiles, loadJournalFile } from '@/lib/y
 const FILE_A = 'https://disk.yandex.ru/i/aaaaaaaaaaaaaa';
 const FILE_B = 'https://disk.yandex.ru/i/bbbbbbbbbbbbbb';
 const FOLDER = 'https://disk.yandex.ru/d/ffffffffffffff';
+const PD_24_1 = 'https://disk.yandex.ru/i/pTtJyYNVAxv_9w';
+const PD_24_2 = 'https://disk.yandex.ru/i/DqRcoPsqQh233g';
+const ORIGINAL_GROUP_URLS = [
+  'https://disk.yandex.ru/i/jr0lr00cUQp0FQ',
+  'https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg',
+  'https://disk.yandex.ru/i/ezTOIqg1oAictA',
+  'https://disk.yandex.ru/i/n2Ldf1ar5jbjJg',
+  'https://disk.yandex.ru/i/WtnnnWnxsUUoZw',
+  'https://disk.yandex.ru/i/kORWvg2JaCqGQw',
+  'https://disk.yandex.ru/i/mzbfhA6hE_MWSA',
+  'https://disk.yandex.ru/i/NIRLGEBZ9kcE8g',
+];
 
 const fileNames: Record<string, string> = {
   [FILE_A]: 'ИСиП-25-9.xlsx',
   [FILE_B]: 'ИСиП-24-9.xlsx',
+  [PD_24_1]: 'ПД-24-1.xlsx',
+  [PD_24_2]: 'ПД-24-2.xlsx',
+  ...Object.fromEntries(ORIGINAL_GROUP_URLS.map((url, index) => [url, `Группа-${index + 1}.xlsx`])),
 };
 
 const folderTree: Record<string, unknown> = {
@@ -195,17 +210,30 @@ describe('список групп из публичных ссылок', () => {
     expect(new Set(groups.map((group) => group.id)).size).toBe(2);
   });
 
-  it('не показывает две отменённые группы, даже если ссылки остались в Render', async () => {
+  it('показывает обе группы ПД-24, если их ссылки уже есть в Render', async () => {
     process.env.YANDEX_DISK_PUBLIC_URLS = [
       FILE_A,
-      'https://disk.yandex.ru/i/pTtJyYNVAxv_9w',
+      PD_24_1,
       FILE_B,
-      'https://disk.yandex.ru/i/DqRcoPsqQh233g',
+      PD_24_2,
     ].join(',');
 
-    expect(getPublicSourcesInfo().linkCount).toBe(2);
+    expect(getPublicSourcesInfo().linkCount).toBe(4);
     const groups = await listJournalFiles();
-    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-24/9', 'ИСиП-25/9']);
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-24/9', 'ИСиП-25/9', 'ПД-24/1', 'ПД-24/2']);
+  });
+
+  it('добавляет обе группы ПД-24 к восьми ссылкам действующего Render без дублей', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = ORIGINAL_GROUP_URLS.join(',');
+
+    expect(getPublicSourcesInfo().linkCount).toBe(10);
+    const groups = await listJournalFiles();
+    expect(groups).toHaveLength(10);
+    expect(groups.map((group) => group.groupName)).toContain('ПД-24/1');
+    expect(groups.map((group) => group.groupName)).toContain('ПД-24/2');
+
+    process.env.YANDEX_DISK_PUBLIC_URLS = [...ORIGINAL_GROUP_URLS, PD_24_1, PD_24_2].join(',');
+    expect(getPublicSourcesInfo().linkCount).toBe(10);
   });
 
   // Ровно та ошибка, что случилась на боевом сервере: список вписали в старую переменную.
