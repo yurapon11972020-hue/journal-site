@@ -1,0 +1,32 @@
+name: Lecture reminders heartbeat
+
+on:
+  # Render Free засыпает без входящих запросов. Проверка идёт каждые 5 минут
+  # с 06:02 до 21:57 по времени Сургута (01:02–16:57 UTC).
+  schedule:
+    - cron: '2-59/5 1-16 * * *'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+
+jobs:
+  wake-and-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Run lecture reminder check
+        env:
+          API_URL: https://journal-site-yfev.onrender.com/api/lecture-reminders/run
+        shell: bash
+        run: |
+          set -euo pipefail
+          oidc_response=$(curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 2 \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            --get --data-urlencode "audience=${API_URL}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}")
+          id_token=$(jq -er '.value' <<< "${oidc_response}")
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-delay 3 \
+            -X POST -H "Authorization: Bearer ${id_token}" "${API_URL}"

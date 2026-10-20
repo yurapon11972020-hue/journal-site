@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
+import { getScheduleData } from '@/lib/lecture-sources';
+import { getLectureStore, type LectureMode } from '@/lib/lecture-subscriptions';
 import { getSubscriptionStore, type Subscription } from '@/lib/subscriptions';
 import { answerCallback, editMessage, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
+import { findLectureGroup, lectureGroupsScreen, lectureSettingsScreen } from '@/lib/telegram-lecture-views';
 import {
   notifyMenuScreen,
   notifyStudentScreen,
@@ -68,8 +71,37 @@ async function findSubscription(
   return list.find((item) => item.studentId === studentId) ?? null;
 }
 
+/** Раздел лекций получает группы из расписания и не обращается к Excel журнала. */
+async function buildLectureScreen(action: string, chatId: number): Promise<BotScreen> {
+  const schedule = await getScheduleData();
+  const groups = [...schedule.groups].sort((a, b) => a.localeCompare(b, 'ru'));
+  const store = getLectureStore();
+
+  if (action === 'lg') {
+    return lectureGroupsScreen(groups, await store.listByChat(chatId));
+  }
+
+  const [kind, key] = action.split(':');
+  const groupName = findLectureGroup(groups, key || '');
+  if (!groupName) {
+    return lectureGroupsScreen(groups, await store.listByChat(chatId));
+  }
+
+  if (kind === 'lv' || kind === 'll') {
+    const mode: LectureMode = kind === 'lv' ? 'video' : 'lecture';
+    const current = await store.get(chatId, groupName);
+    await store.setMode(chatId, groupName, mode, !current?.[mode]);
+  }
+
+  return lectureSettingsScreen(groupName, await store.get(chatId, groupName));
+}
+
 async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
   try {
+    if (action === 'lg' || /^(ls|lv|ll):/.test(action)) {
+      return await buildLectureScreen(action, chatId);
+    }
+
     const groups = await getJournalGroups();
 
     if (action === 'grp' || action === 'start') {
@@ -244,7 +276,8 @@ export async function POST(request: Request) {
       }
     } else if (update.message?.text) {
       const chatId = update.message.chat.id;
-      const screen = await buildScreen('start', chatId);
+      const command = update.message.text.trim().split(/\s+/)[0];
+      const screen = await buildScreen(/^\/lectures(?:@[\w]+)?$/i.test(command) ? 'lg' : 'start', chatId);
       await sendMessage(chatId, screen.text, screen.buttons);
     }
   } catch (error) {

@@ -18,7 +18,7 @@ export function getWebhookSecret(): string | undefined {
   return process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || undefined;
 }
 
-async function tg<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T | null> {
+async function tg<T = unknown>(method: string, payload: Record<string, unknown>, timeoutMs?: number): Promise<T | null> {
   const token = getBotToken();
   try {
     const response = await fetch(`${TELEGRAM_API}/bot${token}/${method}`, {
@@ -26,6 +26,7 @@ async function tg<T = unknown>(method: string, payload: Record<string, unknown>)
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       cache: 'no-store',
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     });
 
     const data = (await response.json().catch(() => null)) as { ok?: boolean; result?: T; description?: string } | null;
@@ -50,6 +51,18 @@ export async function sendMessage(chatId: number, text: string, buttons?: Inline
     disable_web_page_preview: true,
     reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
   });
+}
+
+/** Возвращает результат доставки: напоминание нельзя помечать отправленным после ошибки API. */
+export async function sendMessageChecked(chatId: number, text: string, buttons?: InlineButton[][]): Promise<boolean> {
+  const result = await tg('sendMessage', {
+    chat_id: chatId,
+    text,
+    parse_mode: 'HTML',
+    disable_web_page_preview: true,
+    reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
+  }, 10_000);
+  return result !== null;
 }
 
 export async function editMessage(chatId: number, messageId: number, text: string, buttons?: InlineButton[][]): Promise<boolean> {

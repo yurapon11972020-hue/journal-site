@@ -27,8 +27,9 @@ export const config = {
      * Проверяем всё, кроме:
      * - /login и /api/login — иначе вход стал бы недостижим;
      * - /api/telegram — вебхук вызывает Telegram, а не человек с cookie;
+     * - /api/lecture-reminders/run — GitHub OIDC проверяется в самом маршруте;
      * - служебных файлов Next.js и картинок.
      */
-    '/((?!login|api/login|api/telegram|_next/static|_next/image|favicon.ico|hero.jpg).*)',
+    '/((?!login|api/login|api/telegram|api/lecture-reminders/run|_next/static|_next/image|favicon.ico|hero.jpg).*)',
   ],
 };
