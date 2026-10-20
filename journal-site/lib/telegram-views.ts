@@ -116,6 +116,7 @@ export function groupsScreen(groups: JournalGroupRef[]): BotScreen {
   const buttons: InlineButton[][] = groups.map((group, index) => [
     { text: `🎓 ${group.groupName}`, callback_data: `g:${index}` },
   ]);
+  buttons.push([{ text: '📅 Напоминания о лекциях', callback_data: 'lg' }]);
 
   return { text: '📖 <b>Электронный журнал</b>\n\nВыбери группу:', buttons };
 }
@@ -145,6 +146,7 @@ export function groupMenuScreen(data: JournalData, gi: number, totalGroups: numb
 
   buttons.push([{ text: '👥 Студенты', callback_data: `s:${gi}` }]);
   buttons.push([{ text: '🔔 Уведомления об оценках', callback_data: `w:${gi}` }]);
+  buttons.push([{ text: '📅 Напоминания о лекциях', callback_data: 'lg' }]);
   buttons.push([
     { text: '🏆 Рейтинг', callback_data: `r:${gi}` },
     { text: '📚 Предметы', callback_data: `p:${gi}` },
