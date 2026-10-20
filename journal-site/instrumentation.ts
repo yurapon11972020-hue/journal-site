@@ -1,6 +1,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     try {
+      const { startBroadcastDrainLoop } = await import('./lib/broadcast-scheduler');
+      startBroadcastDrainLoop();
+    } catch (error) {
+      console.error('[broadcast] Не удалось запустить очередь:', error);
+    }
+
+    try {
       const { startLectureReminderLoop } = await import('./lib/lecture-reminders');
       startLectureReminderLoop();
     } catch (error) {

@@ -84,6 +84,11 @@ export async function answerCallback(callbackId: string, text?: string): Promise
   });
 }
 
+/** Убирает сообщение с паролем из личного чата, если Telegram разрешает удаление. */
+export async function deleteMessage(chatId: number, messageId: number): Promise<boolean> {
+  return (await tg('deleteMessage', { chat_id: chatId, message_id: messageId }, 10_000)) === true;
+}
+
 export async function setWebhook(url: string): Promise<{ ok: boolean; description: string }> {
   const token = getBotToken();
   const payload: Record<string, unknown> = {

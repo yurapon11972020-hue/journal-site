@@ -41,3 +41,9 @@ services:
       # не могли заставить его рассылать журнал. Только латиница, цифры, - и _.
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
+      # Секретная рассылка: ID владельца можно узнать в боте командой /myid.
+      # Пароль должен быть длинным и храниться только в Render Environment.
+      - key: TELEGRAM_BROADCAST_ADMIN_ID
+        sync: false
+      - key: TELEGRAM_BROADCAST_PASSWORD
+        sync: false
