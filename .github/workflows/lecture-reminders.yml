@@ -1,32 +1,68 @@
 name: Lecture reminders heartbeat
 
 on:
-  # Render Free засыпает без входящих запросов. Проверка идёт каждые 5 минут
-  # с 06:02 до 21:57 по времени Сургута (01:02–16:57 UTC).
+  # Плановые события GitHub могут пропадать. Они восстанавливают цепочку,
+  # а каждый запущенный workflow запускает следующий после своей проверки.
   schedule:
     - cron: '2-59/5 1-16 * * *'
   workflow_dispatch:
+    inputs:
+      check_minutes:
+        description: 'Минут проверки в этом запуске (1 для проверки цепочки)'
+        required: false
+        type: number
+        default: 6
 
 permissions:
   id-token: write
+  actions: write
+
+concurrency:
+  group: lecture-reminders-heartbeat
+  cancel-in-progress: false
 
 jobs:
   wake-and-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 30
     steps:
-      - name: Run lecture reminder check
+      - name: Check lecture reminders every minute
         env:
           API_URL: https://journal-site-yfev.onrender.com/api/lecture-reminders/run
+          CHECK_MINUTES: ${{ inputs.check_minutes || 6 }}
         shell: bash
         run: |
           set -euo pipefail
-          oidc_response=$(curl --fail-with-body --silent --show-error \
-            --retry 2 --retry-delay 2 \
-            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            --get --data-urlencode "audience=${API_URL}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}")
-          id_token=$(jq -er '.value' <<< "${oidc_response}")
-          curl --fail-with-body --silent --show-error \
-            --retry 2 --retry-delay 3 \
-            -X POST -H "Authorization: Bearer ${id_token}" "${API_URL}"
+          if ! [[ "${CHECK_MINUTES}" =~ ^[1-6]$ ]]; then
+            echo "check_minutes должен быть числом от 1 до 6" >&2
+            exit 1
+          fi
+
+          for ((minute = 1; minute <= CHECK_MINUTES; minute += 1)); do
+            echo "Проверка ${minute}/${CHECK_MINUTES}"
+            if oidc_response=$(curl --fail-with-body --silent --show-error \
+              --max-time 20 --retry 1 --retry-delay 2 \
+              -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              --get --data-urlencode "audience=${API_URL}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}"); then
+              if id_token=$(jq -er '.value' <<< "${oidc_response}"); then
+                if ! curl --fail-with-body --silent --show-error \
+                  --max-time 45 --retry 1 --retry-delay 3 \
+                  -X POST -H "Authorization: Bearer ${id_token}" "${API_URL}"; then
+                  echo "::warning::Проверка сайта не удалась; повторю через минуту"
+                fi
+              else
+                echo "::warning::GitHub не выдал OIDC-токен; повторю через минуту"
+              fi
+            else
+              echo "::warning::Не удалось запросить OIDC-токен; повторю через минуту"
+            fi
+
+            if ((minute < CHECK_MINUTES)); then sleep 60; fi
+          done
+
+      - name: Start next heartbeat
+        if: ${{ always() && !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/lecture-reminders.yml/dispatches" -X POST -f ref=main
