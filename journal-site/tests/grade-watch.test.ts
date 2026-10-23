@@ -6,6 +6,7 @@ import { setSubscriptionStoreForTests, type MarksSnapshot, type Subscription, ty
 import type { GradeEntry, JournalData, StudentRecord } from '@/lib/types';
 
 const sent: { chatId: number; text: string }[] = [];
+const REPLACED_ISIP_R_GROUP_ID = 'X0p3qpi4K5zZhKZU';
 
 vi.mock('@/lib/telegram', async () => {
   const actual = await vi.importActual<typeof import('@/lib/telegram')>('@/lib/telegram');
@@ -144,6 +145,100 @@ describe('уведомления об оценках', () => {
     );
 
     expect(sent).toHaveLength(0);
+  });
+
+  it('после замены файла ИСиП(Р)-24/1 создаёт новый исходный снимок без старых уведомлений', async () => {
+    store.subscriptions = [
+      { chatId: 77, groupId: REPLACED_ISIP_R_GROUP_ID, studentId: 1, studentName: 'Иванов Иван', subjects: [] },
+    ];
+    store.snapshots.set(REPLACED_ISIP_R_GROUP_ID, { '[1,"Алгебра","3 сен"]': '2' });
+
+    const first = await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Иванов Иван', [grade('3 сен', '5')])]),
+    );
+
+    expect(first.baseline).toBe(true);
+    expect(first.messages).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(store.snapshots.get(REPLACED_ISIP_R_GROUP_ID)?.__journal_source_and_roster__).toBeTruthy();
+
+    const second = await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Иванов Иван', [grade('3 сен', '5'), grade('4 сен', '4')])]),
+    );
+
+    expect(second.baseline).toBe(false);
+    expect(second.messages).toBe(1);
+    expect(sent[0].text).toContain('4 по «Алгебра»');
+  });
+
+  it('после перестановки строк ищет подписанного студента по имени и не шлёт чужую оценку', async () => {
+    store.subscriptions = [
+      { chatId: 77, groupId: REPLACED_ISIP_R_GROUP_ID, studentId: 1, studentName: 'Иванов Иван', subjects: [] },
+    ];
+
+    await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Иванов Иван', []), student(2, 'Петров Пётр', [])]),
+    );
+
+    const reordered = await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Петров Пётр', []), student(2, 'Иванов Иван', [])]),
+    );
+    expect(reordered.baseline).toBe(true);
+    expect(sent).toHaveLength(0);
+
+    await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Петров Пётр', [grade('3 сен', '2')]), student(2, 'Иванов Иван', [])]),
+    );
+    expect(sent).toHaveLength(0);
+
+    const ownGrade = await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Петров Пётр', [grade('3 сен', '2')]), student(2, 'Иванов Иван', [grade('3 сен', '5')])]),
+    );
+    expect(ownGrade.messages).toBe(1);
+    expect(sent[0]).toMatchObject({ chatId: 77 });
+    expect(sent[0].text).toContain('5 по «Алгебра»');
+  });
+
+  it('не отправляет оценку, если имя подписчика в новом файле неоднозначно', async () => {
+    store.subscriptions = [
+      { chatId: 77, groupId: REPLACED_ISIP_R_GROUP_ID, studentId: 1, studentName: 'Иванов Иван', subjects: [] },
+    ];
+    const students = [student(1, 'Иванов Иван', []), student(2, 'Иванов Иван', [])];
+    await watchGroup(REPLACED_ISIP_R_GROUP_ID, 'ИСиП(Р)-24/1', journal(students));
+    await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Иванов Иван', [grade('3 сен', '5')]), student(2, 'Иванов Иван', [])]),
+    );
+    expect(sent).toHaveLength(0);
+  });
+
+  it('не дублирует сообщение при старом и новом ID подписки одного студента', async () => {
+    store.subscriptions = [
+      { chatId: 77, groupId: REPLACED_ISIP_R_GROUP_ID, studentId: 1, studentName: 'Иванов Иван', subjects: [] },
+      { chatId: 77, groupId: REPLACED_ISIP_R_GROUP_ID, studentId: 2, studentName: 'Иванов Иван', subjects: [] },
+    ];
+    const roster = [student(1, 'Петров Пётр', []), student(2, 'Иванов Иван', [])];
+    await watchGroup(REPLACED_ISIP_R_GROUP_ID, 'ИСиП(Р)-24/1', journal(roster));
+    const result = await watchGroup(
+      REPLACED_ISIP_R_GROUP_ID,
+      'ИСиП(Р)-24/1',
+      journal([student(1, 'Петров Пётр', []), student(2, 'Иванов Иван', [grade('3 сен', '5')])]),
+    );
+    expect(result.messages).toBe(1);
+    expect(sent).toHaveLength(1);
   });
 
   it('подписка на один предмет отсекает остальные', () => {

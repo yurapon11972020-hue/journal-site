@@ -38,6 +38,17 @@ describe('parseJournalWorkbook', () => {
     expect(data.subjects[0].teacherName).toBe('Петрова А. В.');
   });
 
+  it('использует подтверждённое имя группы, если шапка Excel осталась от шаблона', () => {
+    const buffer = buildJournalWorkbook({ groupName: 'ИСиП 24/2', students, marks });
+    const data = parseJournalWorkbook(buffer, {
+      ...fileInfo(buffer),
+      groupNameOverride: 'ИСиП(Р)-24/1',
+    });
+
+    expect(data.groupName).toBe('ИСиП(Р)-24/1');
+    expect(data.studentCount).toBe(2);
+  });
+
   it('считает средний балл по предмету', () => {
     const data = parse({ students, marks });
 

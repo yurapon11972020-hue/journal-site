@@ -97,4 +97,6 @@ export interface JournalFileResult {
   sourceDetails: string;
   fileName?: string;
   groupNameHint?: string;
+  /** Подтверждённое имя группы, когда шапка Excel осталась от чужого шаблона. */
+  groupNameOverride?: string;
 }

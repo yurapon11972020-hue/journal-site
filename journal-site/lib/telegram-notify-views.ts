@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import { escapeHtml, type InlineButton } from '@/lib/telegram';
 import type { Subscription } from '@/lib/subscriptions';
 import type { BotScreen } from '@/lib/telegram-views';
@@ -17,6 +19,18 @@ export function subjectNames(data: JournalData): string[] {
   return data.subjects.map((subject) => subject.subjectName);
 }
 
+/** Привязываем кнопку к имени, поскольку ID студента меняется с порядком строк Excel. */
+export function studentNameKey(name: string, subjectName?: string): string {
+  const normalized = name.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru').replace(/ё/g, 'е');
+  return crypto.createHash('sha256').update(subjectName === undefined ? normalized : `${normalized}\n${subjectName}`).digest('hex').slice(0, 12);
+}
+
+function studentAction(kind: string, gi: number, studentId: number, name: string, withNameKey: boolean, subjectIndex?: number, subjectName?: string): string {
+  const base = `${kind}:${gi}:${studentId}`;
+  const withSubject = subjectIndex === undefined ? base : `${base}:${subjectIndex}`;
+  return withNameKey ? `${withSubject}:${studentNameKey(name, subjectName)}` : withSubject;
+}
+
 function describeSubscription(subscription: Subscription, total: number): string {
   if (!subscription.subjects.length) {
     return `все предметы (${total})`;
@@ -32,6 +46,7 @@ export function notifyMenuScreen(
   data: JournalData,
   gi: number,
   subscriptions: Subscription[],
+  withNameKey = false,
 ): BotScreen {
   const total = data.subjects.length;
   const lines = [
@@ -59,11 +74,11 @@ export function notifyMenuScreen(
     buttons.push([
       {
         text: `⚙️ ${shortName(subscription.studentName)}`,
-        callback_data: `wp:${gi}:${subscription.studentId}`,
+        callback_data: studentAction('wp', gi, subscription.studentId, subscription.studentName, withNameKey),
       },
       {
         text: '🔕 Отключить',
-        callback_data: `wd:${gi}:${subscription.studentId}`,
+        callback_data: studentAction('wd', gi, subscription.studentId, subscription.studentName, withNameKey),
       },
     ]);
   }
@@ -77,7 +92,7 @@ export function notifyMenuScreen(
     buttons.push([
       {
         text: `👤 ${shortName(student.name)}`,
-        callback_data: `wp:${gi}:${student.id}`,
+        callback_data: studentAction('wp', gi, student.id, student.name, withNameKey),
       },
     ]);
   }
@@ -93,6 +108,7 @@ export function notifyStudentScreen(
   gi: number,
   studentId: number,
   subscription: Subscription | null,
+  withNameKey = false,
 ): BotScreen {
   const student = data.students.find((item) => item.id === studentId);
 
@@ -118,12 +134,12 @@ export function notifyStudentScreen(
   const allActive = subscription !== null && subscription.subjects.length === 0;
 
   const buttons: InlineButton[][] = [
-    [{ text: `${allActive ? '✅' : '📚'} Все предметы`, callback_data: `wa:${gi}:${studentId}` }],
-    [{ text: '🎯 Выбрать предметы', callback_data: `ws:${gi}:${studentId}` }],
+    [{ text: `${allActive ? '✅' : '📚'} Все предметы`, callback_data: studentAction('wa', gi, studentId, student.name, withNameKey) }],
+    [{ text: '🎯 Выбрать предметы', callback_data: studentAction('ws', gi, studentId, student.name, withNameKey) }],
   ];
 
   if (subscription) {
-    buttons.push([{ text: '🔕 Отключить уведомления', callback_data: `wd:${gi}:${studentId}` }]);
+    buttons.push([{ text: '🔕 Отключить уведомления', callback_data: studentAction('wd', gi, studentId, student.name, withNameKey) }]);
   }
 
   buttons.push([{ text: '⬅️ Назад', callback_data: `w:${gi}` }]);
@@ -137,9 +153,11 @@ export function notifySubjectsScreen(
   gi: number,
   studentId: number,
   subscription: Subscription | null,
+  withNameKey = false,
 ): BotScreen {
   const names = subjectNames(data);
   const chosen = new Set(subscription?.subjects ?? []);
+  const student = data.students.find((item) => item.id === studentId);
 
   const lines = [
     '🎯 <b>Выбери предметы</b>',
@@ -154,11 +172,11 @@ export function notifySubjectsScreen(
   const buttons: InlineButton[][] = names.map((name, index) => [
     {
       text: `${chosen.has(name) ? '✅' : '▫️'} ${name}`,
-      callback_data: `wt:${gi}:${studentId}:${index}`,
+      callback_data: studentAction('wt', gi, studentId, student?.name ?? '', withNameKey, index, name),
     },
   ]);
 
-  buttons.push([{ text: '⬅️ Назад', callback_data: `wp:${gi}:${studentId}` }]);
+  buttons.push([{ text: '⬅️ Назад', callback_data: studentAction('wp', gi, studentId, student?.name ?? '', withNameKey) }]);
 
   return { text: lines.join('\n'), buttons };
 }

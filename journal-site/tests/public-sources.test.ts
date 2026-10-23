@@ -10,6 +10,8 @@ import { getPublicSourcesInfo, listJournalFiles, loadJournalFile } from '@/lib/y
 const FILE_A = 'https://disk.yandex.ru/i/aaaaaaaaaaaaaa';
 const FILE_B = 'https://disk.yandex.ru/i/bbbbbbbbbbbbbb';
 const FOLDER = 'https://disk.yandex.ru/d/ffffffffffffff';
+const ISIP_R_24_1_NEW = 'https://disk.yandex.ru/d/AHWThZMsG2LgWw';
+const ISIP_R_24_1_OLD = 'https://disk.yandex.ru/i/jr0lr00cUQp0FQ';
 const PD_24_1 = 'https://disk.yandex.ru/i/pTtJyYNVAxv_9w';
 const PD_24_2 = 'https://disk.yandex.ru/i/DqRcoPsqQh233g';
 const ORIGINAL_GROUP_URLS = [
@@ -28,6 +30,7 @@ const fileNames: Record<string, string> = {
   [FILE_B]: 'ИСиП-24-9.xlsx',
   [PD_24_1]: 'ПД-24-1.xlsx',
   [PD_24_2]: 'ПД-24-2.xlsx',
+  [ISIP_R_24_1_NEW]: 'ИСиП(Р)-24-1 (версия от 14.10.2026 08:28:32).xlsx',
   ...Object.fromEntries(ORIGINAL_GROUP_URLS.map((url, index) => [url, `Группа-${index + 1}.xlsx`])),
 };
 
@@ -192,6 +195,25 @@ afterAll(() => {
 });
 
 describe('список групп из публичных ссылок', () => {
+  it('новая ссылка заменяет старую, сохраняя имя, ID и подписки группы', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = ISIP_R_24_1_OLD;
+
+    const groups = await listJournalFiles();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      id: 'X0p3qpi4K5zZhKZU',
+      groupName: 'ИСиП(Р)-24/1',
+      fileName: fileNames[ISIP_R_24_1_NEW],
+    });
+    const file = await loadJournalFile(groups[0].filePath);
+    expect(file.groupNameOverride).toBe('ИСиП(Р)-24/1');
+    expect(fakeFetch.mock.calls.some(([input]) => String(input).includes(encodeURIComponent(ISIP_R_24_1_NEW)))).toBe(true);
+
+    process.env.YANDEX_DISK_PUBLIC_URLS = `${ISIP_R_24_1_NEW},${ISIP_R_24_1_OLD}`;
+    expect(getPublicSourcesInfo().linkCount).toBe(1);
+    expect((await listJournalFiles())[0].id).toBe('X0p3qpi4K5zZhKZU');
+  });
+
   it('одна ссылка даёт одну группу', async () => {
     process.env.YANDEX_DISK_PUBLIC_URLS = FILE_A;
 

@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
 import { describeChange, type JournalChange } from '@/lib/notify-messages';
 import { getSubscriptionStore, type MarksSnapshot, type Subscription } from '@/lib/subscriptions';
@@ -6,6 +8,59 @@ import type { JournalData } from '@/lib/types';
 
 /** Больше этого за один проход не шлём — защита от лавины после сбоя. */
 const MAX_MESSAGES_PER_RUN = 60;
+
+/** Прежний ID группы сохраняется при замене недоступного файла Яндекс.Диска. */
+const REPLACED_ISIP_R_GROUP_ID = 'X0p3qpi4K5zZhKZU';
+const REPLACED_ISIP_R_SOURCE = 'https://disk.yandex.ru/d/AHWThZMsG2LgWw';
+/** Не является ключом оценки: diffSnapshots пропускает его при сравнении. */
+const ISIP_R_SOURCE_MARKER = '__journal_source_and_roster__';
+
+function normalizedStudentName(name: string): string {
+  return name.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru').replace(/ё/g, 'е');
+}
+
+/** Перестановка строк или переименование листов требует нового исходного снимка. */
+function isipRSourceVersion(data: JournalData): string {
+  return crypto.createHash('sha256').update(JSON.stringify([
+    REPLACED_ISIP_R_SOURCE,
+    data.students.map((student) => [student.id, normalizedStudentName(student.name)]),
+    data.subjects.map((subject) => [subject.sheetName, subject.subjectName]),
+  ])).digest('hex');
+}
+
+/** Числовой ID — позиция в Excel; после замены файла подписчика сверяем по имени. */
+function subscriptionsForCurrentRoster(subscriptions: Subscription[], data: JournalData): Subscription[] {
+  const idsByName = new Map<string, number[]>();
+  for (const student of data.students) {
+    const name = normalizedStudentName(student.name);
+    if (!name) continue;
+    const ids = idsByName.get(name) ?? [];
+    ids.push(student.id);
+    idsByName.set(name, ids);
+  }
+
+  const resolved = new Map<string, Subscription>();
+  for (const subscription of subscriptions) {
+    const ids = idsByName.get(normalizedStudentName(subscription.studentName));
+    // Пустое или неоднозначное имя нельзя безопасно привязать к чужой строке.
+    if (ids?.length !== 1) continue;
+
+    const studentId = ids[0];
+    const key = JSON.stringify([subscription.chatId, studentId]);
+    const previous = resolved.get(key);
+    if (!previous) {
+      resolved.set(key, { ...subscription, studentId });
+      continue;
+    }
+
+    // Старый и новый ID одной подписки могут сосуществовать после смены файла.
+    // Объединяем предметы, чтобы не отправлять два одинаковых сообщения в чат.
+    previous.subjects = previous.subjects.length && subscription.subjects.length
+      ? [...new Set([...previous.subjects, ...subscription.subjects])]
+      : [];
+  }
+  return [...resolved.values()];
+}
 
 /**
  * Ключ клетки журнала. Собирается через JSON, а не через разделитель:
@@ -116,9 +171,13 @@ export interface WatchResult {
 export async function watchGroup(groupId: string, groupName: string, data: JournalData): Promise<WatchResult> {
   const store = getSubscriptionStore();
   const current = buildSnapshot(data);
+  if (groupId === REPLACED_ISIP_R_GROUP_ID) {
+    current[ISIP_R_SOURCE_MARKER] = isipRSourceVersion(data);
+  }
   const previous = await store.readSnapshot(groupId);
 
-  if (!previous) {
+  if (!previous || (groupId === REPLACED_ISIP_R_GROUP_ID &&
+      previous[ISIP_R_SOURCE_MARKER] !== current[ISIP_R_SOURCE_MARKER])) {
     await store.writeSnapshot(groupId, current);
     return { groupId, groupName, baseline: true, changes: 0, messages: 0 };
   }
@@ -130,7 +189,10 @@ export async function watchGroup(groupId: string, groupName: string, data: Journ
     return { groupId, groupName, baseline: false, changes: 0, messages: 0 };
   }
 
-  const subscriptions = await store.listByGroup(groupId);
+  const savedSubscriptions = await store.listByGroup(groupId);
+  const subscriptions = groupId === REPLACED_ISIP_R_GROUP_ID
+    ? subscriptionsForCurrentRoster(savedSubscriptions, data)
+    : savedSubscriptions;
   let sent = 0;
 
   for (const change of changes) {

@@ -16,6 +16,12 @@ const PUBLIC_CACHE_PATH_PREFIX = '__yandex_public_cache__::';
 const PUBLIC_CACHE_META_FILE = 'latest.json';
 const PUBLIC_CACHE_GROUPS_FILE = 'groups.json';
 const DEFAULT_PUBLIC_CACHE_INTERVAL_MINUTES = 30;
+// В Render могла остаться старая ссылка. Подменяем источник, сохраняя ID
+// группы, к которому привязаны подписки на оценки и снимок журнала.
+const ISIP_R_24_1_OLD_URL = 'https://disk.yandex.ru/i/jr0lr00cUQp0FQ';
+const ISIP_R_24_1_NEW_URL = 'https://disk.yandex.ru/d/AHWThZMsG2LgWw';
+const ISIP_R_24_1_NAME = 'ИСиП(Р)-24/1';
+const ISIP_R_24_1_ID = 'X0p3qpi4K5zZhKZU';
 // В действующем Render может остаться вручную заданный список из восьми групп.
 // Для этого известного списка подключаем также две ранее присланные группы ПД-24.
 const ORIGINAL_GROUP_PUBLIC_URLS = [
@@ -137,8 +143,11 @@ function isSpreadsheetFile(fileName: string): boolean {
 
 function buildGroupRef(source: JournalSource, filePath: string, fileName?: string, groupName?: string): JournalGroupRef {
   const resolvedFileName = fileName || basenameFromFilePath(filePath);
+  const publicGroup = source === 'yandex-public-cache' ? decodePublicGroupPath(filePath) : null;
+  const retainsOldId = (publicGroup?.publicKey === ISIP_R_24_1_NEW_URL && !publicGroup.publicPath) ||
+    (source === 'yandex-public' && filePath === ISIP_R_24_1_NEW_URL);
   return {
-    id: groupPathToPublicId(filePath),
+    id: retainsOldId ? ISIP_R_24_1_ID : groupPathToPublicId(filePath),
     // Список групп строится без разбора книги, так что здесь доступно
     // только имя файла — приводим его к общему виду «ИСиП-24/1».
     groupName: formatGroupName(groupName?.trim() || filenameToGroupName(resolvedFileName)),
@@ -320,15 +329,22 @@ function getPublicSources(): PublicSourceConfig[] {
     );
   }
 
-  const sources = parsePublicSourceList(raw);
-  const configuredKeys = new Set(sources.map((source) => source.publicKey));
-  if (ORIGINAL_GROUP_PUBLIC_URLS.every((url) => configuredKeys.has(url))) {
+  const configured = parsePublicSourceList(raw);
+  const configuredKeys = new Set(configured.map((source) => source.publicKey));
+  if (ORIGINAL_GROUP_PUBLIC_URLS.every((url) => configuredKeys.has(url) ||
+    (url === ISIP_R_24_1_OLD_URL && configuredKeys.has(ISIP_R_24_1_NEW_URL)))) {
     for (const url of ADDITIONAL_GROUP_PUBLIC_URLS) {
       if (!configuredKeys.has(url)) {
-        sources.push({ publicKey: url });
+        configured.push({ publicKey: url });
       }
     }
   }
+
+  const sources = configured.map((source) =>
+    source.publicKey === ISIP_R_24_1_OLD_URL || source.publicKey === ISIP_R_24_1_NEW_URL
+      ? { ...source, publicKey: ISIP_R_24_1_NEW_URL, label: ISIP_R_24_1_NAME }
+      : source,
+  );
 
   if (!sources.length) {
     throw new Error(
@@ -771,6 +787,7 @@ async function readFromPublicYandexDisk(): Promise<JournalFileResult> {
     sourceDetails: source.publicPath || source.publicKey,
     fileName,
     groupNameHint: source.label || filenameToGroupName(fileName),
+    ...(source.publicKey === ISIP_R_24_1_NEW_URL ? { groupNameOverride: ISIP_R_24_1_NAME } : {}),
   };
 }
 
@@ -1243,6 +1260,7 @@ async function readFromCachedPublicYandexDisk(filePath?: string): Promise<Journa
     sourceDetails: `${cached.filePath} ← ${cached.publicPath || cached.publicKey}`,
     fileName: cached.displayName,
     groupNameHint: group.label || filenameToGroupName(cached.displayName),
+    ...(group.publicKey === ISIP_R_24_1_NEW_URL ? { groupNameOverride: ISIP_R_24_1_NAME } : {}),
   };
 }
 
