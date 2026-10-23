@@ -6,12 +6,13 @@ import { getBroadcastStore } from '@/lib/broadcast-store';
 import { getScheduleData } from '@/lib/lecture-sources';
 import { getLectureStore, type LectureMode } from '@/lib/lecture-subscriptions';
 import { getSubscriptionStore, type Subscription } from '@/lib/subscriptions';
-import { answerCallback, deleteMessage, editMessage, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
+import { answerCallback, deleteMessage, editMessage, escapeHtml, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
 import { findLectureGroup, lectureGroupsScreen, lectureSettingsScreen } from '@/lib/telegram-lecture-views';
 import {
   notifyMenuScreen,
   notifyStudentScreen,
   notifySubjectsScreen,
+  studentNameKey,
   subjectNames,
 } from '@/lib/telegram-notify-views';
 import {
@@ -137,13 +138,98 @@ async function chatSubscriptions(chatId: number, groupId: string): Promise<Subsc
   return all.filter((item) => item.groupId === groupId);
 }
 
-async function findSubscription(
-  chatId: number,
-  groupId: string,
-  studentId: number,
-): Promise<Subscription | null> {
+/** У старой ссылки ИСиП(Р)-24/1 и нового файла один ID группы, а номера строк могли измениться. */
+const REPLACED_ISIP_R_GROUP_ID = 'X0p3qpi4K5zZhKZU';
+
+function normalizedStudentName(name: string): string {
+  return name.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru').replace(/ё/g, 'е');
+}
+
+function currentStudent(data: JournalData, studentId: number): JournalData['students'][number] | null {
+  const student = data.students.find((item) => item.id === studentId);
+  if (!student) return null;
+  return data.students.filter((item) => normalizedStudentName(item.name) === normalizedStudentName(student.name)).length === 1
+    ? student
+    : null;
+}
+
+function matchingSubscriptions(
+  list: Subscription[], groupId: string, data: JournalData, studentId: number,
+): Subscription[] {
+  if (groupId !== REPLACED_ISIP_R_GROUP_ID) {
+    return list.filter((item) => item.studentId === studentId);
+  }
+  const student = currentStudent(data, studentId);
+  return student ? list.filter((item) => normalizedStudentName(item.studentName) === normalizedStudentName(student.name)) : [];
+}
+
+function mergedSubscription(matches: Subscription[], studentId: number): Subscription | null {
+  if (!matches.length) return null;
+  const [first] = matches;
+  return {
+    ...first,
+    studentId,
+    subjects: matches.some((item) => !item.subjects.length)
+      ? []
+      : [...new Set(matches.flatMap((item) => item.subjects))],
+  };
+}
+
+function validStudentButton(groupId: string, data: JournalData, studentId: number, key?: string, subjectIndex?: number): boolean {
+  if (groupId !== REPLACED_ISIP_R_GROUP_ID) return true;
+  const student = currentStudent(data, studentId);
+  const subjectName = subjectIndex === undefined ? undefined : subjectNames(data)[subjectIndex];
+  // Старые кнопки содержат только номер строки: после смены Excel он небезопасен.
+  return !!student && (subjectIndex === undefined || !!subjectName)
+    && key === studentNameKey(student.name, subjectName);
+}
+
+function freeSubscriptionId(list: Subscription[], desiredId: number): number {
+  const taken = new Set(list.map((item) => item.studentId));
+  if (!taken.has(desiredId)) return desiredId;
+  let free = -1;
+  while (taken.has(free)) free -= 1;
+  return free;
+}
+
+async function notificationMenu(data: JournalData, gi: number, groupId: string, chatId: number): Promise<BotScreen> {
   const list = await chatSubscriptions(chatId, groupId);
-  return list.find((item) => item.studentId === studentId) ?? null;
+  if (groupId !== REPLACED_ISIP_R_GROUP_ID) return notifyMenuScreen(data, gi, list);
+
+  const visible: Subscription[] = [];
+  const missing: Subscription[] = [];
+  const usedNames = new Set<string>();
+  for (const subscription of list) {
+    const name = normalizedStudentName(subscription.studentName);
+    const student = data.students.find((item) => normalizedStudentName(item.name) === name);
+    if (!student || !currentStudent(data, student.id)) {
+      missing.push(subscription);
+      continue;
+    }
+    if (usedNames.has(name)) continue;
+    usedNames.add(name);
+    const merged = mergedSubscription(matchingSubscriptions(list, groupId, data, student.id), student.id);
+    if (merged) visible.push(merged);
+  }
+
+  const screen = notifyMenuScreen(data, gi, visible, true);
+  if (missing.length) {
+    screen.text += `\n\n<b>Подписки, которых нет в новом списке:</b>`;
+    for (const subscription of missing) {
+      screen.text += `\n• ${escapeHtml(subscription.studentName)}`;
+      screen.buttons.splice(-1, 0, [{
+        text: `🔕 Убрать: ${subscription.studentName.slice(0, 26)}`,
+        callback_data: `wo:${gi}:${subscription.studentId}:${studentNameKey(subscription.studentName)}`,
+      }]);
+    }
+  }
+  return screen;
+}
+
+async function refreshedNotificationMenu(data: JournalData, gi: number, groupId: string, chatId: number): Promise<BotScreen> {
+  const screen = await notificationMenu(data, gi, groupId, chatId);
+  screen.text = `Кнопки обновлены после замены журнала. Выбери студента ещё раз.\n\n${screen.text}`;
+  return screen;
 }
 
 /** Раздел лекций получает группы из расписания и не обращается к Excel журнала. */
@@ -235,39 +321,62 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
       // ---- уведомления об оценках ----
       case 'w': {
         const { data, group } = await loadGroupData(groups, gi);
-        return notifyMenuScreen(data, gi, await chatSubscriptions(chatId, group.id));
+        return notificationMenu(data, gi, group.id, chatId);
       }
       case 'wp': {
         const { data, group } = await loadGroupData(groups, gi);
-        return notifyStudentScreen(data, gi, a, await findSubscription(chatId, group.id, a));
+        if (!validStudentButton(group.id, data, a, parts[3])) {
+          return refreshedNotificationMenu(data, gi, group.id, chatId);
+        }
+        const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
+        return notifyStudentScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID);
       }
       case 'wa': {
         const { data, group } = await loadGroupData(groups, gi);
+        if (!validStudentButton(group.id, data, a, parts[3])) {
+          return refreshedNotificationMenu(data, gi, group.id, chatId);
+        }
         const student = data.students.find((item) => item.id === a);
         if (student) {
           // Пустой список предметов означает «все».
-          await getSubscriptionStore().save({
+          const store = getSubscriptionStore();
+          const list = await chatSubscriptions(chatId, group.id);
+          const matches = matchingSubscriptions(list, group.id, data, a);
+          const storageId = matches[0]?.studentId ?? freeSubscriptionId(list, student.id);
+          await store.save({
             chatId,
             groupId: group.id,
-            studentId: student.id,
+            studentId: storageId,
             studentName: student.name,
             subjects: [],
           });
+          for (const duplicate of matches.slice(1)) {
+            await store.remove(chatId, group.id, duplicate.studentId);
+          }
         }
-        return notifyMenuScreen(data, gi, await chatSubscriptions(chatId, group.id));
+        return notificationMenu(data, gi, group.id, chatId);
       }
       case 'ws': {
         const { data, group } = await loadGroupData(groups, gi);
-        return notifySubjectsScreen(data, gi, a, await findSubscription(chatId, group.id, a));
+        if (!validStudentButton(group.id, data, a, parts[3])) {
+          return refreshedNotificationMenu(data, gi, group.id, chatId);
+        }
+        const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
+        return notifySubjectsScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID);
       }
       case 'wt': {
         const { data, group } = await loadGroupData(groups, gi);
+        if (!validStudentButton(group.id, data, a, parts[4], b)) {
+          return refreshedNotificationMenu(data, gi, group.id, chatId);
+        }
         const student = data.students.find((item) => item.id === a);
         const name = subjectNames(data)[b];
 
         if (student && name) {
           const store = getSubscriptionStore();
-          const current = await findSubscription(chatId, group.id, a);
+          const list = await chatSubscriptions(chatId, group.id);
+          const matches = matchingSubscriptions(list, group.id, data, a);
+          const current = mergedSubscription(matches, a);
           const chosen = new Set(current?.subjects ?? []);
 
           if (chosen.has(name)) {
@@ -277,25 +386,51 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
           }
 
           if (chosen.size) {
+            const storageId = matches[0]?.studentId ?? freeSubscriptionId(list, student.id);
             await store.save({
               chatId,
               groupId: group.id,
-              studentId: student.id,
+              studentId: storageId,
               studentName: student.name,
               subjects: [...chosen],
             });
           } else {
             // Сняли последнюю галочку — это то же самое, что отписаться.
-            await store.remove(chatId, group.id, student.id);
+            for (const subscription of matches) {
+              await store.remove(chatId, group.id, subscription.studentId);
+            }
+          }
+          if (chosen.size) {
+            for (const duplicate of matches.slice(1)) {
+              await store.remove(chatId, group.id, duplicate.studentId);
+            }
           }
         }
 
-        return notifySubjectsScreen(data, gi, a, await findSubscription(chatId, group.id, a));
+        const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
+        return notifySubjectsScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID);
       }
       case 'wd': {
         const { data, group } = await loadGroupData(groups, gi);
-        await getSubscriptionStore().remove(chatId, group.id, a);
-        return notifyMenuScreen(data, gi, await chatSubscriptions(chatId, group.id));
+        if (!validStudentButton(group.id, data, a, parts[3])) {
+          return refreshedNotificationMenu(data, gi, group.id, chatId);
+        }
+        const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
+        for (const subscription of matches) {
+          await getSubscriptionStore().remove(chatId, group.id, subscription.studentId);
+        }
+        return notificationMenu(data, gi, group.id, chatId);
+      }
+      case 'wo': {
+        const { data, group } = await loadGroupData(groups, gi);
+        if (group.id !== REPLACED_ISIP_R_GROUP_ID) return notificationMenu(data, gi, group.id, chatId);
+        const list = await chatSubscriptions(chatId, group.id);
+        const orphan = list.find((item) => item.studentId === a && studentNameKey(item.studentName) === parts[3]);
+        const safelyMatched = orphan && data.students.some((item) =>
+          normalizedStudentName(item.name) === normalizedStudentName(orphan.studentName) && currentStudent(data, item.id),
+        );
+        if (orphan && !safelyMatched) await getSubscriptionStore().remove(chatId, group.id, orphan.studentId);
+        return notificationMenu(data, gi, group.id, chatId);
       }
       default: {
         if (groups.length === 1) {

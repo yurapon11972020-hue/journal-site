@@ -1099,10 +1099,12 @@ function parseWorkbook(buffer: Buffer, fileInfo: JournalFileResult): JournalData
   const reportCards = parseReportCards(workbook, students);
 
   return {
-    // Название группы решается в одном месте: главнее шапка журнала,
-    // имя файла с Диска — запасной вариант. Подробности в lib/group-name.
+    // Обычно главнее шапка журнала; подтверждённое имя источника может
+    // переопределить её, если Excel скопирован из чужого шаблона.
     groupName:
-      pickGroupName(fileInfo.groupNameHint ?? filenameToGroupName(fileInfo.fileName ?? ''), roster.groupName) || null,
+      (fileInfo.groupNameOverride
+        ? formatGroupName(fileInfo.groupNameOverride)
+        : pickGroupName(fileInfo.groupNameHint ?? filenameToGroupName(fileInfo.fileName ?? ''), roster.groupName)) || null,
     source: fileInfo.source,
     // Наружу отдаём только вид источника: внутренний путь кэша и публичная
     // ссылка на Яндекс.Диск не должны попадать в ответ /api/journal.

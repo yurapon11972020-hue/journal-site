@@ -47,7 +47,7 @@ npm install
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/d/AHWThZMsG2LgWw,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=./.journal-cache
@@ -145,7 +145,7 @@ Environment variables на Render:
 
 ```env
 JOURNAL_SOURCE=yandex-public-cache
-YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/i/jr0lr00cUQp0FQ,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
+YANDEX_DISK_PUBLIC_URLS=https://disk.yandex.ru/d/AHWThZMsG2LgWw,https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg,https://disk.yandex.ru/i/ezTOIqg1oAictA,https://disk.yandex.ru/i/n2Ldf1ar5jbjJg,https://disk.yandex.ru/i/WtnnnWnxsUUoZw,https://disk.yandex.ru/i/kORWvg2JaCqGQw,https://disk.yandex.ru/i/mzbfhA6hE_MWSA,https://disk.yandex.ru/i/NIRLGEBZ9kcE8g,https://disk.yandex.ru/i/pTtJyYNVAxv_9w,https://disk.yandex.ru/i/DqRcoPsqQh233g
 JOURNAL_CACHE_INTERVAL_MINUTES=30
 JOURNAL_CACHE_MAX_FILES=2
 JOURNAL_CACHE_DIR=/tmp/journal-cache
