@@ -138,6 +138,15 @@ export const IconMoon = (p: IconProps) => (
   </Icon>
 );
 
+/** Шесть лучей с развилками — кнопка новогодних украшений. */
+export const IconSnowflake = (p: IconProps) => (
+  <Icon {...p}>
+    {[0, 60, 120, 180, 240, 300].map((angle) => (
+      <path key={angle} transform={`rotate(${angle} 12 12)`} d="M12 12V2.5M9.6 4.6 12 7l2.4-2.4" />
+    ))}
+  </Icon>
+);
+
 export const IconSend = (p: IconProps) => (
   <Icon {...p}>
     <path d="M21.5 3.5 2 10.2l7.1 2.7L12 21l3.5-8.6Z" />

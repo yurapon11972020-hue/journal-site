@@ -9,8 +9,10 @@ import {
   IconMenu,
   IconMoon,
   IconSend,
+  IconSnowflake,
   IconSun,
 } from '@/components/icons';
+import { useHoliday } from '@/lib/use-holiday';
 import { useTheme } from '@/lib/use-theme';
 
 export interface NavSection {
@@ -65,6 +67,7 @@ export default function AppShell({
   wide = false,
 }: AppShellProps) {
   const { theme, toggleTheme } = useTheme();
+  const { holiday, toggleHoliday } = useHoliday();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const dateLabel = useSyncExternalStore(subscribeNothing, dateOnClient, dateOnServer);
 
@@ -105,7 +108,9 @@ export default function AppShell({
 
       <nav className={`sidebar${drawerOpen ? ' sidebar--open' : ''}`} aria-label="Разделы журнала">
         <div className="sidebar__brand">
-          <Image className="sidebar__logo" src="/logo.png" alt="" width={160} height={155} priority />
+          <span className="brand-logo">
+            <Image className="sidebar__logo" src="/logo.png" alt="" width={160} height={155} priority />
+          </span>
           <span className="sidebar__brand-text">
             <span className="sidebar__brand-name">{brandName}</span>
             {brandSub ? <span className="sidebar__brand-sub">{brandSub}</span> : null}
@@ -138,6 +143,14 @@ export default function AppShell({
             <span className="navitem__icon">{theme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}</span>
             <span className="navitem__label">{theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}</span>
           </button>
+          {holiday !== 'none' ? (
+            <button type="button" className="navitem" onClick={toggleHoliday}>
+              <span className="navitem__icon">
+                <IconSnowflake size={18} />
+              </span>
+              <span className="navitem__label">{holiday === 'on' ? 'Убрать украшения' : 'Вернуть украшения'}</span>
+            </button>
+          ) : null}
           <a className="navitem" href={TELEGRAM_BOT_URL} target="_blank" rel="noopener noreferrer">
             <span className="navitem__icon">
               <IconSend size={18} />
