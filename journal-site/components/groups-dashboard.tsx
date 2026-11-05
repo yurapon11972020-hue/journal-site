@@ -4,9 +4,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
-import { IconChevronRight, IconGroups, IconMoon, IconSearch, IconSend, IconSun } from '@/components/icons';
+import { IconChevronRight, IconGroups, IconMoon, IconSearch, IconSend, IconSnowflake, IconSun } from '@/components/icons';
 import { EmptyState } from '@/components/ui';
 import type { JournalGroupRef } from '@/lib/types';
+import { useHoliday } from '@/lib/use-holiday';
 import { useTheme } from '@/lib/use-theme';
 
 interface GroupsDashboardProps {
@@ -31,6 +32,7 @@ function groupsWord(count: number): string {
 
 export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
   const { theme, toggleTheme } = useTheme();
+  const { holiday, toggleHoliday } = useHoliday();
   const [query, setQuery] = useState('');
 
   const showSearch = groups.length >= SEARCH_THRESHOLD;
@@ -51,7 +53,9 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
       <header className="pickshell__bar">
         <div className="pickshell__bar-inner">
         <span className="pickshell__brand">
-          <Image className="sidebar__logo" src="/logo.png" alt="" width={160} height={155} priority />
+          <span className="brand-logo">
+            <Image className="sidebar__logo" src="/logo.png" alt="" width={160} height={155} priority />
+          </span>
           <span className="sidebar__brand-text">
             <span className="sidebar__brand-name">Подпольный журнал</span>
             <span className="sidebar__brand-sub">Выбор группы</span>
@@ -63,6 +67,17 @@ export default function GroupsDashboard({ groups }: GroupsDashboardProps) {
             <IconSend size={16} />
             Телеграм-бот
           </a>
+          {holiday !== 'none' ? (
+            <button
+              type="button"
+              className="btn btn--icon"
+              onClick={toggleHoliday}
+              aria-label={holiday === 'on' ? 'Убрать новогодние украшения' : 'Вернуть новогодние украшения'}
+              title={holiday === 'on' ? 'Убрать новогодние украшения' : 'Вернуть новогодние украшения'}
+            >
+              <IconSnowflake size={17} />
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn--icon"

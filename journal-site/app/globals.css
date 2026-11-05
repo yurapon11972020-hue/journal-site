@@ -1985,3 +1985,262 @@ code {
     display: inline;
   }
 }
+
+/* ---------------------------------------------------------------
+   10. Новогоднее оформление
+   Гирлянда, снег и шапка на логотипе поверх обычного вида.
+   Видны, только пока на <html> стоит data-holiday="on" (lib/holiday);
+   нажатия не ловят и ничего не сдвигают.
+   --------------------------------------------------------------- */
+
+:root,
+:root[data-theme='light'] {
+  --xmas-snow: #b6cce6;
+  --xmas-snow-edge: rgba(62, 104, 156, 0.35);
+  --xmas-wire: #3f4d40;
+  --xmas-socket: #9aa1a8;
+}
+
+:root[data-theme='dark'] {
+  --xmas-snow: #eef4fb;
+  --xmas-snow-edge: rgba(255, 255, 255, 0.35);
+  --xmas-wire: #7d8c7e;
+  --xmas-socket: #b3bac2;
+}
+
+.xmas {
+  display: none;
+}
+
+:root[data-holiday='on'] .xmas {
+  display: block;
+}
+
+/* ----- Гирлянда: провод провисает между лампочками ----- */
+
+.xmas-garland {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 80;
+  height: 24px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.xmas-garland__wire {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: var(--xmas-wire);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='12' viewBox='0 0 48 12'%3E%3Cpath d='M0 1.5Q24 11 48 1.5' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E") 0 0 / 48px 12px repeat-x;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='12' viewBox='0 0 48 12'%3E%3Cpath d='M0 1.5Q24 11 48 1.5' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E") 0 0 / 48px 12px repeat-x;
+}
+
+.xmas-garland__bulbs {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+}
+
+.xmas-bulb {
+  --bulb: #e8473b;
+  --bulb-glow: rgba(232, 71, 59, 0.6);
+  --tilt: 8deg;
+  --tw: 2.6s;
+  --tw-delay: 0s;
+  position: relative;
+  flex: 0 0 48px;
+  height: 24px;
+}
+
+/* Цоколь висит в нижней точке провода. */
+.xmas-bulb::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 21.5px;
+  width: 5px;
+  height: 4px;
+  border-radius: 1.5px;
+  background: var(--xmas-socket);
+}
+
+.xmas-bulb::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 20.5px;
+  width: 7px;
+  height: 11px;
+  border-radius: 50% 50% 50% 50% / 40% 40% 60% 60%;
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.9) 0 1px, rgba(255, 255, 255, 0) 2.6px),
+    var(--bulb);
+  box-shadow: 0 0 7px 2px var(--bulb-glow);
+  transform: rotate(var(--tilt));
+  transform-origin: 50% -3px;
+  animation: xmas-twinkle var(--tw) ease-in-out var(--tw-delay) infinite;
+}
+
+.xmas-bulb:nth-child(even) {
+  --tilt: -8deg;
+}
+
+.xmas-bulb:nth-child(5n + 2) {
+  --bulb: #f7c12f;
+  --bulb-glow: rgba(247, 193, 47, 0.6);
+}
+
+.xmas-bulb:nth-child(5n + 3) {
+  --bulb: #37ad5c;
+  --bulb-glow: rgba(55, 173, 92, 0.55);
+}
+
+.xmas-bulb:nth-child(5n + 4) {
+  --bulb: #3d8ff2;
+  --bulb-glow: rgba(61, 143, 242, 0.6);
+}
+
+.xmas-bulb:nth-child(5n) {
+  --bulb: #d95bd2;
+  --bulb-glow: rgba(217, 91, 210, 0.55);
+}
+
+/* Разные периоды и сдвиги, чтобы лампочки мигали вразнобой. */
+.xmas-bulb:nth-child(3n + 1) {
+  --tw: 2.1s;
+  --tw-delay: -0.7s;
+}
+
+.xmas-bulb:nth-child(3n + 2) {
+  --tw: 3s;
+  --tw-delay: -1.6s;
+}
+
+.xmas-bulb:nth-child(4n) {
+  --tw-delay: -2.3s;
+}
+
+@keyframes xmas-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ----- Снег ----- */
+
+.xmas-snow {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.xmas-flake {
+  position: absolute;
+  top: 0;
+  animation: xmas-fall 15s linear infinite;
+  will-change: transform;
+}
+
+.xmas-flake__body {
+  display: block;
+  border-radius: 50%;
+  background: var(--xmas-snow);
+  box-shadow: 0 0 2px var(--xmas-snow-edge);
+  animation: xmas-sway 4s ease-in-out infinite alternate;
+}
+
+.xmas-flake__body--star {
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(60 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(120 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(180 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(240 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(300 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.9' stroke-linecap='round'%3E%3Cpath d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(60 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(120 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(180 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(240 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3Cpath transform='rotate(300 12 12)' d='M12 12V2M12 6 9.2 3.4M12 6l2.8-2.6'/%3E%3C/svg%3E") center / contain no-repeat;
+  animation-name: xmas-sway-turn;
+}
+
+@keyframes xmas-fall {
+  from {
+    transform: translate3d(0, -24px, 0);
+  }
+
+  to {
+    transform: translate3d(0, calc(100vh + 24px), 0);
+  }
+}
+
+@keyframes xmas-sway {
+  from {
+    transform: translateX(-10px);
+  }
+
+  to {
+    transform: translateX(10px);
+  }
+}
+
+@keyframes xmas-sway-turn {
+  from {
+    transform: translateX(-12px) rotate(-30deg);
+  }
+
+  to {
+    transform: translateX(12px) rotate(30deg);
+  }
+}
+
+/* ----- Шапка Деда Мороза на логотипе ----- */
+
+.brand-logo {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+:root[data-holiday='on'] .brand-logo::after {
+  content: '';
+  position: absolute;
+  top: -11px;
+  right: -3px;
+  width: 23px;
+  height: 19px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 40'%3E%3Cpath d='M6 30C7 18 15 7 28 6c8-.5 13 4 14.5 11.5-4-3-8-2.5-10 .5 1 4 1 8 0 12Z' fill='%23d63b35'/%3E%3Cpath d='M28 6c8-.5 13 4 14.5 11.5-4-3-8-2.5-10 .5C31.5 13 30 9 28 6Z' fill='%23b32c27'/%3E%3Ccircle cx='42' cy='19' r='5' fill='%23fafafa' stroke='%23d5dae0'/%3E%3Crect x='3' y='27' width='33' height='9' rx='4.5' fill='%23fafafa' stroke='%23d5dae0'/%3E%3C/svg%3E") center / contain no-repeat;
+  transform: rotate(16deg);
+  pointer-events: none;
+}
+
+/* На телефоне снега меньше: экран узкий, хлопья не должны мешать читать. */
+@media (max-width: 720px) {
+  .xmas-flake:nth-child(n + 23) {
+    display: none;
+  }
+}
+
+/* Тем, кто отключил анимацию в системе, — гирлянда без мигания и без снега. */
+@media (prefers-reduced-motion: reduce) {
+  .xmas-snow {
+    display: none;
+  }
+
+  .xmas-bulb::after {
+    animation: none;
+  }
+}
+
+@media print {
+  :root[data-holiday='on'] .xmas,
+  :root[data-holiday='on'] .brand-logo::after {
+    display: none;
+  }
+}
