@@ -5,7 +5,13 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as XLSX from 'xlsx';
 
-import { getPublicSourcesInfo, listJournalFiles, loadJournalFile } from '@/lib/yandex-disk';
+import {
+  getPublicMetaProblems,
+  getPublicSourcesInfo,
+  listJournalFiles,
+  loadJournalFile,
+  startJournalCache,
+} from '@/lib/yandex-disk';
 
 const FILE_A = 'https://disk.yandex.ru/i/aaaaaaaaaaaaaa';
 const FILE_B = 'https://disk.yandex.ru/i/bbbbbbbbbbbbbb';
@@ -14,6 +20,8 @@ const ISIP_R_24_1_NEW = 'https://disk.yandex.ru/d/AHWThZMsG2LgWw';
 const ISIP_R_24_1_OLD = 'https://disk.yandex.ru/i/jr0lr00cUQp0FQ';
 const PD_24_1 = 'https://disk.yandex.ru/i/pTtJyYNVAxv_9w';
 const PD_24_2 = 'https://disk.yandex.ru/i/DqRcoPsqQh233g';
+/** Ссылка, по которой Яндекс отвечает «не найдено»: файл удалили или ссылку пересоздали. */
+const GONE = 'https://disk.yandex.ru/i/gonegonegone01';
 const ORIGINAL_GROUP_URLS = [
   'https://disk.yandex.ru/i/jr0lr00cUQp0FQ',
   'https://disk.yandex.ru/i/QZZ5ghsJ_w7xAg',
@@ -62,6 +70,10 @@ let listCalls = 0;
 let downloadFailures = 0;
 /** Яндекс не отвечает на запрос метаданных, но файл отдаёт. */
 let metaIsDown = false;
+/** То же, но только для этих ссылок. */
+const metaDownFor = new Set<string>();
+/** В каком порядке скачивались файлы: публичные ключи ссылок. */
+let downloadOrder: string[] = [];
 let downloadReturnsLoginPage = false;
 let apiIsDown = false;
 
@@ -93,7 +105,7 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
 
   if (target.pathname === '/v1/disk/public/resources') {
     listCalls += 1;
-    if (metaIsDown) {
+    if (metaIsDown || metaDownFor.has(key)) {
       return json({ description: 'Service Unavailable' }, 503);
     }
     if (key === FOLDER) {
@@ -120,6 +132,7 @@ const fakeFetch = vi.fn(async (input: string | URL | Request) => {
       });
     }
     downloads += 1;
+    downloadOrder.push(target.searchParams.get('k') ?? '');
     const workbook = workbookFor(`${target.searchParams.get('k')}::${target.searchParams.get('p')}`);
     const name = fileNames[target.searchParams.get('k') ?? ''] ?? 'journal.xlsx';
 
@@ -169,8 +182,13 @@ beforeEach(async () => {
   listCalls = 0;
   downloadFailures = 0;
   metaIsDown = false;
+  metaDownFor.clear();
+  downloadOrder = [];
   downloadReturnsLoginPage = false;
   apiIsDown = false;
+  delete fileNames[GONE];
+  // Причины сбоев копятся на globalThis и переживают тест — начинаем с чистого листа.
+  delete (globalThis as Record<symbol, unknown>)[Symbol.for('journal.yandex.metaProblems')];
   resetRuntime();
 
   process.env.JOURNAL_SOURCE = 'yandex-public-cache';
@@ -378,6 +396,49 @@ describe('загрузка журнала группы', () => {
     const after = await listJournalFiles();
     expect(after[0].fileName).toBe('ИСиП-25-9.xlsx');
     expect(after[0].groupName).toBe('ИСиП-25/9');
+  });
+
+  it('ссылку, по которой Яндекс не находит файл, в список не берёт', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = `${FILE_A},${GONE}`;
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const groups = await listJournalFiles();
+
+    // Вместо карточки «gonegonegone01», которая не открывается, — только живая группа.
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-25/9']);
+    // А причина видна в /api/groups.
+    const problem = getPublicMetaProblems().find((item) => item.link.includes(GONE));
+    expect(problem?.reason).toMatch(/не нашёл файл/i);
+  });
+
+  it('когда файл по ссылке снова находится, группа возвращается', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = `${FILE_A},${GONE}`;
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    expect(await listJournalFiles()).toHaveLength(1);
+
+    fileNames[GONE] = 'ПД-24-2.xlsx';
+    // Список групп пересобирается после интервала; здесь — сразу, без кэша.
+    await fs.rm(path.join(cacheRoot, 'groups.json'), { force: true });
+    resetRuntime();
+
+    const groups = await listJournalFiles();
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-25/9', 'ПД-24/2']);
+    expect(getPublicMetaProblems().some((item) => item.link.includes(GONE))).toBe(false);
+  });
+
+  it('группу с хвостом ссылки вместо имени скачивает первой', async () => {
+    process.env.YANDEX_DISK_PUBLIC_URLS = `${FILE_A},${FILE_B}`;
+    metaDownFor.add(FILE_B);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await startJournalCache();
+
+    // Настоящее имя приходит вместе с файлом, поэтому безымянная группа идёт первой.
+    expect(downloadOrder).toEqual([FILE_B, FILE_A]);
+    const groups = await listJournalFiles();
+    expect(groups.map((group) => group.groupName).sort()).toEqual(['ИСиП-24/9', 'ИСиП-25/9']);
   });
 
   it('страница входа вместо журнала не затирает рабочую копию', async () => {
