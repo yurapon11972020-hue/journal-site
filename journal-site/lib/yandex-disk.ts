@@ -723,20 +723,36 @@ function buildPublicParams(publicKey: string, publicPath?: string): URLSearchPar
  */
 const META_PROBLEMS_KEY = Symbol.for('journal.yandex.metaProblems');
 
-function getMetaProblems(): Map<string, string> {
-  const store = globalThis as typeof globalThis & { [META_PROBLEMS_KEY]?: Map<string, string> };
-  store[META_PROBLEMS_KEY] ??= new Map<string, string>();
+interface MetaProblem {
+  reason: string;
+  /** Яндекс ответил, что файла по ссылке нет: его удалили или ссылку пересоздали. */
+  gone: boolean;
+}
+
+function getMetaProblems(): Map<string, MetaProblem> {
+  const store = globalThis as typeof globalThis & { [META_PROBLEMS_KEY]?: Map<string, MetaProblem> };
+  store[META_PROBLEMS_KEY] ??= new Map<string, MetaProblem>();
   return store[META_PROBLEMS_KEY];
 }
 
 export function getPublicMetaProblems(): { link: string; reason: string }[] {
-  return [...getMetaProblems().entries()].map(([link, reason]) => ({ link, reason }));
+  return [...getMetaProblems().entries()].map(([link, problem]) => ({ link, reason: problem.reason }));
+}
+
+function isNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b404\b/.test(message);
+}
+
+/** Последний запрос данных о файле по этой ссылке кончился ответом «не найдено». */
+function isGoneFromYandex(target: Pick<PublicGroupSource, 'publicKey' | 'publicPath'>): boolean {
+  return getMetaProblems().get(describePublicTarget(target))?.gone === true;
 }
 
 function explainMetaFailure(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
 
-  if (/\b404\b/.test(message)) {
+  if (isNotFoundError(error)) {
     return 'Яндекс не нашёл файл по этой ссылке. Проверь, что ссылка не устарела и файл не удалён.';
   }
   if (/\b(401|403)\b/.test(message)) {
@@ -759,7 +775,7 @@ async function readPublicResourceMeta(publicKey: string, publicPath?: string, li
     return meta;
   } catch (error) {
     const reason = explainMetaFailure(error);
-    getMetaProblems().set(where, reason);
+    getMetaProblems().set(where, { reason, gone: isNotFoundError(error) });
     console.error(`[yandex] Не удалось прочитать данные о файле ${where}: ${reason}`);
     return null;
   }
@@ -887,6 +903,15 @@ async function resolvePublicGroupsFromNetwork(cached: PublicGroupsCacheMeta | nu
       // Папка есть, но файлов не видно — берём то, что уже знали раньше.
       const remembered = cached?.groups.filter((group) => group.publicKey === source.publicKey) ?? [];
       groups.push(...remembered);
+      continue;
+    }
+
+    if (!meta && isGoneFromYandex(source)) {
+      // Файла по ссылке больше нет: такой журнал не открыть, а карточка
+      // с хвостом ссылки вместо названия только путает. Причина видна
+      // в /api/groups, а если файл снова откроется, группа вернётся сама
+      // при следующем обновлении списка.
+      console.error(`[journal-cache] Ссылка ${describePublicTarget(source)} не попала в список: Яндекс не нашёл файл.`);
       continue;
     }
 
@@ -1162,8 +1187,11 @@ async function ensureFreshCachedPublicJournal(
 
 async function refreshAllPublicJournals(options: { force?: boolean } = {}): Promise<void> {
   const groups = await resolvePublicGroups({ force: options.force });
+  // Группы, у которых вместо имени пока хвост ссылки, качаем первыми:
+  // настоящее имя приходит вместе с файлом, и карточка быстрее исправится.
+  const ordered = [...groups].sort((a, b) => Number(Boolean(b.fileNameIsGuess)) - Number(Boolean(a.fileNameIsGuess)));
 
-  for (const group of groups) {
+  for (const group of ordered) {
     try {
       await ensureFreshCachedPublicJournal(group, options);
     } catch (error) {
