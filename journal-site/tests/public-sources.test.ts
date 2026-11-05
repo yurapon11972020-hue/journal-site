@@ -398,24 +398,25 @@ describe('загрузка журнала группы', () => {
     expect(after[0].groupName).toBe('ИСиП-25/9');
   });
 
-  it('ссылку, по которой Яндекс не находит файл, в список не берёт', async () => {
+  it('группа, файл которой Яндекс не находит, остаётся в списке', async () => {
     process.env.YANDEX_DISK_PUBLIC_URLS = `${FILE_A},${GONE}`;
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const groups = await listJournalFiles();
 
-    // Вместо карточки «gonegonegone01», которая не открывается, — только живая группа.
-    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-25/9']);
+    // Файл могут вернуть по той же ссылке, поэтому группа не пропадает:
+    // пока имя неизвестно, она называется хвостом ссылки.
+    expect(groups.map((group) => group.groupName)).toEqual(['ИСиП-25/9', 'gonegonegone01']);
     // А причина видна в /api/groups.
     const problem = getPublicMetaProblems().find((item) => item.link.includes(GONE));
     expect(problem?.reason).toMatch(/не нашёл файл/i);
   });
 
-  it('когда файл по ссылке снова находится, группа возвращается', async () => {
+  it('когда файл по ссылке снова находится, группа получает настоящее имя', async () => {
     process.env.YANDEX_DISK_PUBLIC_URLS = `${FILE_A},${GONE}`;
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    expect(await listJournalFiles()).toHaveLength(1);
+    expect(await listJournalFiles()).toHaveLength(2);
 
     fileNames[GONE] = 'ПД-24-2.xlsx';
     // Список групп пересобирается после интервала; здесь — сразу, без кэша.
