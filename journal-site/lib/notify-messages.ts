@@ -162,22 +162,45 @@ function phraseKeyFor(tone: MarkTone): string {
   return tone === 'electronic-absence' ? 'absence' : tone;
 }
 
+/** Что именно случилось: тон новой отметки, «отработал» или «исправил». */
+export type ChangeKind = MarkTone | 'cleared' | 'fixed';
+
+/** Разобранное уведомление: из него собираются и текст, и виджет. */
+export interface ChangeParts {
+  kind: ChangeKind;
+  icon: string;
+  /** Реплика без иконки: «зашибись». */
+  phrase: string;
+  beforeText: string;
+  afterText: string;
+  /** Готовый текст сообщения — тот же, что раньше возвращал describeChange. */
+  text: string;
+}
+
 /**
- * Превращает изменение в журнале в текст сообщения.
+ * Разбирает изменение в журнале для уведомления.
  * Возвращает null, если писать не о чем.
  */
-export function describeChange(change: JournalChange): string | null {
+export function describeChangeParts(change: JournalChange): ChangeParts | null {
   const before = classifyMarkValue(change.before);
   const after = classifyMarkValue(change.after);
 
   const wasEmpty = before.tone === 'empty';
   const nowEmpty = after.tone === 'empty';
+  const marks = { beforeText: before.displayText, afterText: after.displayText };
 
   // Пропуск закрыли: было «н», стало пусто или что-то другое.
   if (!wasEmpty && isAbsenceTone(before.tone) && (nowEmpty || !isAbsenceTone(after.tone))) {
     const phrase = PHRASES.cleared;
     const seed = `${change.studentId}|${change.subject}|${change.columnLabel}|cleared`;
-    return `${phrase.icon} Отработал ${before.displayText} по «${change.subject}» — ${pickLine(phrase, seed)}`;
+    const line = pickLine(phrase, seed);
+    return {
+      kind: 'cleared',
+      icon: phrase.icon,
+      phrase: line,
+      ...marks,
+      text: `${phrase.icon} Отработал ${before.displayText} по «${change.subject}» — ${line}`,
+    };
   }
 
   if (nowEmpty) {
@@ -196,11 +219,33 @@ export function describeChange(change: JournalChange): string | null {
   if (beforeRank && afterRank && afterRank > beforeRank) {
     const phrase = PHRASES.fixed;
     const seed = `${change.studentId}|${change.subject}|${change.columnLabel}|fixed`;
-    return `${phrase.icon} Исправил ${before.displayText} на ${after.displayText} по «${change.subject}» — ${pickLine(phrase, seed)}`;
+    const line = pickLine(phrase, seed);
+    return {
+      kind: 'fixed',
+      icon: phrase.icon,
+      phrase: line,
+      ...marks,
+      text: `${phrase.icon} Исправил ${before.displayText} на ${after.displayText} по «${change.subject}» — ${line}`,
+    };
   }
 
   const phrase = PHRASES[phraseKeyFor(after.tone)] ?? PHRASES.plain;
   const seed = `${change.studentId}|${change.subject}|${change.columnLabel}|${change.after}`;
+  const line = pickLine(phrase, seed);
 
-  return `${phrase.icon} ${after.displayText} по «${change.subject}» — ${pickLine(phrase, seed)}`;
+  return {
+    kind: after.tone,
+    icon: phrase.icon,
+    phrase: line,
+    ...marks,
+    text: `${phrase.icon} ${after.displayText} по «${change.subject}» — ${line}`,
+  };
+}
+
+/**
+ * Превращает изменение в журнале в текст сообщения.
+ * Возвращает null, если писать не о чем.
+ */
+export function describeChange(change: JournalChange): string | null {
+  return describeChangeParts(change)?.text ?? null;
 }

@@ -6,7 +6,17 @@ import { getBroadcastStore } from '@/lib/broadcast-store';
 import { getScheduleData } from '@/lib/lecture-sources';
 import { getLectureStore, type LectureMode } from '@/lib/lecture-subscriptions';
 import { getSubscriptionStore, type Subscription } from '@/lib/subscriptions';
-import { answerCallback, deleteMessage, editMessage, escapeHtml, getWebhookSecret, safeCompare, sendMessage } from '@/lib/telegram';
+import {
+  answerCallback,
+  deleteMessage,
+  editMessage,
+  escapeHtml,
+  getWebhookSecret,
+  safeCompare,
+  sendMessage,
+  sendWidget,
+  type InlineButton,
+} from '@/lib/telegram';
 import { findLectureGroup, lectureGroupsScreen, lectureSettingsScreen } from '@/lib/telegram-lecture-views';
 import {
   notifyMenuScreen,
@@ -28,8 +38,21 @@ import {
   subjectsScreen,
   subjectTopicsScreen,
   type BotScreen,
+  type WidgetToggle,
 } from '@/lib/telegram-views';
 import type { JournalData, JournalGroupRef } from '@/lib/types';
+import {
+  chatWidgetsState,
+  setChatWidgets,
+  setGlobalWidgets,
+  widgetsAllowedByEnv,
+  widgetsEnabledFor,
+  widgetsEnabledGlobally,
+} from '@/lib/widget-settings';
+import { calculatorWidget } from '@/lib/widgets/calculator';
+import type { WidgetMessage } from '@/lib/widgets/kit';
+import { ratingWidget } from '@/lib/widgets/rating';
+import { studentCardWidget } from '@/lib/widgets/student-card';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,8 +71,37 @@ interface TelegramUpdate {
     message?: {
       chat: { id: number; type?: string };
       message_id: number;
+      text?: string;
+      /** Есть у сообщения-виджета (HTMLBubbles): его текст не отредактировать. */
+      widget?: unknown;
     };
   };
+}
+
+/** Владелец бота — тот же Telegram ID, что у рассылки. */
+function ownerChatId(): number | null {
+  const rawId = process.env.TELEGRAM_BROADCAST_ADMIN_ID?.trim() ?? '';
+  if (!/^\d+$/.test(rawId)) return null;
+  const id = Number(rawId);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/** /widgets — состояние, /widgets on|off — общий выключатель анимированных карточек. */
+async function widgetCommandReply(argument?: string): Promise<string> {
+  if (argument === 'on' || argument === 'off') {
+    try {
+      await setGlobalWidgets(argument === 'on');
+    } catch (error) {
+      console.error('[карточки] Не удалось сохранить общий выключатель:', error);
+      return '⚠️ Не получилось сохранить выбор: база данных недоступна. Попробуй ещё раз через минуту.';
+    }
+  }
+  if (!widgetsAllowedByEnv()) {
+    return '🎨 Анимированные карточки выключены переменной TELEGRAM_WIDGETS на сервере — бот присылает обычные сообщения.';
+  }
+  return (await widgetsEnabledGlobally())
+    ? '🎨 Анимированные карточки включены для всех. Выключить: /widgets off'
+    : '🎨 Анимированные карточки выключены для всех — бот присылает обычные сообщения, как раньше. Включить: /widgets on';
 }
 
 /** Рассылка включается только при ID владельца и пароле в окружении Render. */
@@ -69,6 +121,12 @@ async function handleBroadcastMessage(message: NonNullable<TelegramUpdate['messa
 
   if (/^\/myid(?:@[\w]+)?$/i.test(text)) {
     await sendMessage(chat.id, `Ваш Telegram ID: <code>${chat.id}</code>`);
+    return true;
+  }
+
+  const widgetCommand = /^\/widgets(?:@[\w]+)?(?:\s+(on|off))?$/i.exec(text);
+  if (widgetCommand && ownerChatId() === chat.id) {
+    await sendMessage(chat.id, await widgetCommandReply(widgetCommand[1]?.toLowerCase()));
     return true;
   }
 
@@ -257,10 +315,57 @@ async function buildLectureScreen(action: string, chatId: number): Promise<BotSc
   return lectureSettingsScreen(groupName, await store.get(chatId, groupName));
 }
 
+/** Кнопка карточек в меню; null — карточки выключены для всех, кнопка не нужна. */
+async function widgetToggleFor(chatId: number, back: string): Promise<WidgetToggle | null> {
+  const on = await chatWidgetsState(chatId);
+  return on === null ? null : { on, back };
+}
+
+/** Экраны, которые в чате с карточками приходят анимированным виджетом. */
+async function buildWidgetScreen(action: string, chatId: number): Promise<{ widget: WidgetMessage; buttons: InlineButton[][] } | null> {
+  const [kind, giRaw, idRaw] = action.split(':');
+  if (kind !== 'c' && kind !== 'k' && kind !== 'r') return null;
+  if (!(await widgetsEnabledFor(chatId))) return null;
+
+  try {
+    const groups = await getJournalGroups();
+    const gi = Number.parseInt(giRaw ?? '0', 10) || 0;
+    const { data } = await loadGroupData(groups, gi);
+    const studentId = Number.parseInt(idRaw ?? '0', 10) || 0;
+    if (kind === 'c') {
+      const widget = studentCardWidget(data, studentId);
+      if (!widget) return null;
+      const buttons = studentCardScreen(data, gi, studentId).buttons;
+      if (calculatorWidget(data, studentId)) {
+        buttons.unshift([{ text: '🧮 Калькулятор оценок', callback_data: `k:${gi}:${studentId}` }]);
+      }
+      return { widget, buttons };
+    }
+    if (kind === 'k') {
+      const widget = calculatorWidget(data, studentId);
+      return widget ? { widget, buttons: [[{ text: '⬅️ К табелю', callback_data: `c:${gi}:${studentId}` }]] } : null;
+    }
+    const widget = ratingWidget(data);
+    return widget ? { widget, buttons: ratingScreen(data, gi).buttons } : null;
+  } catch (error) {
+    console.error('[карточки] Не удалось собрать карточку:', error);
+    return null;
+  }
+}
+
 async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
   try {
     if (action === 'lg' || /^(ls|lv|ll):/.test(action)) {
       return await buildLectureScreen(action, chatId);
+    }
+
+    if (action.startsWith('wx|')) {
+      const current = await chatWidgetsState(chatId);
+      if (current !== null) {
+        await setChatWidgets(chatId, !current);
+      }
+      const back = action.slice(3);
+      return await buildScreen(back && !back.startsWith('wx|') ? back : 'start', chatId);
     }
 
     const groups = await getJournalGroups();
@@ -269,9 +374,9 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
       // Если группа всего одна — сразу открываем её журнал без лишнего экрана.
       if (groups.length === 1) {
         const { data, gi, group } = await loadGroupData(groups, 0);
-        return groupMenuScreen(data, gi, groups.length, group);
+        return groupMenuScreen(data, gi, groups.length, group, await widgetToggleFor(chatId, 'g:0'));
       }
-      return groupsScreen(groups);
+      return groupsScreen(groups, await widgetToggleFor(chatId, 'grp'));
     }
 
     const parts = action.split(':');
@@ -283,13 +388,15 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
     switch (kind) {
       case 'g': {
         const { data, group } = await loadGroupData(groups, gi);
-        return groupMenuScreen(data, gi, groups.length, group);
+        return groupMenuScreen(data, gi, groups.length, group, await widgetToggleFor(chatId, `g:${gi}`));
       }
       case 's': {
         const { data } = await loadGroupData(groups, gi);
         return studentsScreen(data, gi);
       }
-      case 'c': {
+      // «k» — калькулятор из карточки; без карточек вместо него обычный табель.
+      case 'c':
+      case 'k': {
         const { data } = await loadGroupData(groups, gi);
         return studentCardScreen(data, gi, a);
       }
@@ -435,9 +542,9 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
       default: {
         if (groups.length === 1) {
           const { data, gi: safeGi, group } = await loadGroupData(groups, 0);
-          return groupMenuScreen(data, safeGi, groups.length, group);
+          return groupMenuScreen(data, safeGi, groups.length, group, await widgetToggleFor(chatId, `g:${safeGi}`));
         }
-        return groupsScreen(groups);
+        return groupsScreen(groups, await widgetToggleFor(chatId, 'grp'));
       }
     }
   } catch (error) {
@@ -480,10 +587,20 @@ export async function POST(request: Request) {
 
       if (chatId && messageId) {
         await rememberPrivateChat(chatId, query.message?.chat.type);
-        const screen = await buildScreen(action, chatId);
-        const edited = await editMessage(chatId, messageId, screen.text, screen.buttons);
-        if (!edited) {
-          await sendMessage(chatId, screen.text, screen.buttons);
+        // Текст виджета не отредактировать: следующий экран приходит новым сообщением.
+        const fromWidget = query.message?.widget !== undefined;
+        const widgetScreen = await buildWidgetScreen(action, chatId);
+        if (widgetScreen && await sendWidget(chatId, widgetScreen.widget, widgetScreen.buttons)) {
+          // Меню, из которого открыли карточку, переезжает под неё кнопками.
+          if (!fromWidget) {
+            await deleteMessage(chatId, messageId);
+          }
+        } else {
+          const screen = await buildScreen(action, chatId);
+          const edited = !fromWidget && await editMessage(chatId, messageId, screen.text, screen.buttons);
+          if (!edited) {
+            await sendMessage(chatId, screen.text, screen.buttons);
+          }
         }
       }
     } else if (update.message) {

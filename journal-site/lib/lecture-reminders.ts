@@ -8,13 +8,15 @@ import {
   type ScheduleLesson,
 } from '@/lib/lecture-sources';
 import { getLectureStore, type LectureMode } from '@/lib/lecture-subscriptions';
-import { escapeHtml, sendMessageChecked } from '@/lib/telegram';
+import { escapeHtml, sendMessageChecked, sendWidget } from '@/lib/telegram';
+import { widgetsEnabledFor } from '@/lib/widget-settings';
+import { lectureWidget } from '@/lib/widgets/lecture';
 
 const LOCAL_UTC_OFFSET_HOURS = 5;
 const REMINDER_LEAD_MS = 10 * 60 * 1000;
 const CHECK_INTERVAL_MS = 60 * 1000;
 
-interface DueLecture {
+export interface DueLecture {
   lesson: ScheduleLesson;
   mode: LectureMode;
   startsAt: Date;
@@ -122,6 +124,46 @@ export function lectureReminderText(item: DueLecture, now: Date, rooms: Map<stri
   return lines.join('\n');
 }
 
+/** Конец пары по строке «10:00-11:30»; null — в расписании только начало. */
+export function lectureEndAt(lesson: Pick<ScheduleLesson, 'date' | 'time'>): Date | null {
+  const end = /-\s*(\d{1,2}:\d{2})\s*$/.exec(lesson.time)?.[1];
+  return end ? lectureStartAt({ date: lesson.date, time: end }) : null;
+}
+
+/** Ссылки подключения — те же, что в текстовом напоминании. */
+export function lectureReminderLinks(item: DueLecture, rooms: Map<string, string>): Array<{ label: string; url: string }> {
+  if (item.mode !== 'video') return [];
+  const names = teacherNames(item.lesson);
+  const direct = names.map((name) => ({ name, url: matchTeacherRoom(name, rooms) }))
+    .filter((entry): entry is { name: string; url: string } => Boolean(entry.url));
+  const links = direct.length === 1 && names.length === 1
+    ? [{ label: '🎥 Подключиться', url: direct[0].url }]
+    : direct.map(({ name, url }) => ({ label: `🎥 ${name}`, url }));
+  if (direct.length < names.length || !direct.length) {
+    links.push({ label: '🚪 Все комнаты преподавателей', url: TEACHER_ROOMS_DIRECTORY_URL });
+  }
+  return links;
+}
+
+/** Анимированная карточка с обратным отсчётом, если она включена в этом чате; иначе текст. */
+async function sendLectureReminder(chatId: number, item: DueLecture, now: Date, rooms: Map<string, string>): Promise<boolean> {
+  if (await widgetsEnabledFor(chatId)) {
+    const widget = lectureWidget({
+      video: item.mode === 'video',
+      startsAt: item.startsAt,
+      endsAt: lectureEndAt(item.lesson),
+      subject: item.lesson.subject,
+      time: item.lesson.time.replace('-', '–'),
+      group: item.lesson.group,
+      teachers: teacherNames(item.lesson),
+      room: [item.lesson.room_label, item.lesson.room].filter(Boolean).join(' '),
+      links: lectureReminderLinks(item, rooms),
+    });
+    if (widget && await sendWidget(chatId, widget)) return true;
+  }
+  return sendMessageChecked(chatId, lectureReminderText(item, now, rooms));
+}
+
 async function executeLectureReminders(now: Date, currentTime: () => Date): Promise<LectureReminderRunResult> {
   const schedule = await getScheduleData();
   const due = dueLectures(schedule.items, now);
@@ -149,7 +191,7 @@ async function executeLectureReminders(now: Date, currentTime: () => Date): Prom
       if (!(await store.claim(key, chatId))) continue;
       let accepted = false;
       try {
-        accepted = await sendMessageChecked(chatId, lectureReminderText(item, sendAt, rooms));
+        accepted = await sendLectureReminder(chatId, item, sendAt, rooms);
       } catch (error) {
         console.error(`[лекции] Не удалось отправить напоминание в чат ${chatId}:`, error);
       }

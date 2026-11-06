@@ -3,8 +3,11 @@ import crypto from 'node:crypto';
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
 import { describeChange, type JournalChange } from '@/lib/notify-messages';
 import { getSubscriptionStore, type MarksSnapshot, type Subscription } from '@/lib/subscriptions';
-import { sendMessage } from '@/lib/telegram';
+import { sendMessage, sendWidget } from '@/lib/telegram';
 import type { JournalData } from '@/lib/types';
+import { widgetsEnabledFor } from '@/lib/widget-settings';
+import { gradeAlertWidget } from '@/lib/widgets/grade-alert';
+import type { WidgetMessage } from '@/lib/widgets/kit';
 
 /** Больше этого за один проход не шлём — защита от лавины после сбоя. */
 const MAX_MESSAGES_PER_RUN = 60;
@@ -204,6 +207,8 @@ export async function watchGroup(groupId: string, groupName: string, data: Journ
     if (!text) {
       continue;
     }
+    // Карточка одна на изменение: собирается при первом подписчике, которому она нужна.
+    let widget: WidgetMessage | null | undefined;
 
     for (const subscription of subscriptions) {
       if (sent >= MAX_MESSAGES_PER_RUN) {
@@ -214,7 +219,14 @@ export async function watchGroup(groupId: string, groupName: string, data: Journ
       }
 
       try {
-        await sendMessage(subscription.chatId, text);
+        let delivered = false;
+        if (await widgetsEnabledFor(subscription.chatId)) {
+          if (widget === undefined) widget = gradeAlertWidget(change, data);
+          delivered = widget !== null && await sendWidget(subscription.chatId, widget);
+        }
+        if (!delivered) {
+          await sendMessage(subscription.chatId, text);
+        }
         sent += 1;
       } catch (error) {
         // Чат мог быть удалён или бот заблокирован — это не повод ронять проход.
