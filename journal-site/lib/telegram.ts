@@ -1,4 +1,9 @@
 const TELEGRAM_API = 'https://api.telegram.org';
+/**
+ * Бета-сервер Bot API Telegram. Через него сам Telegram отправляет виджеты
+ * (sendWidget), пока Bot API 10.4 не вышел на основном сервере.
+ */
+const TELEGRAM_BETA_API = 'https://api.telegram.org/beta';
 
 export interface InlineButton {
   text: string;
@@ -22,12 +27,19 @@ interface TelegramCall<T> {
   result: T | null;
   /** HTTP-статус ответа; 0 — ответа не было (сеть, тайм-аут). */
   status: number;
+  /** Объяснение Telegram при ошибке: «Not Found», «Bad Request: …». */
+  description: string;
 }
 
-async function tgCall<T>(method: string, payload: Record<string, unknown>, timeoutMs?: number): Promise<TelegramCall<T>> {
+async function tgCall<T>(
+  method: string,
+  payload: Record<string, unknown>,
+  timeoutMs?: number,
+  base = TELEGRAM_API,
+): Promise<TelegramCall<T>> {
   const token = getBotToken();
   try {
-    const response = await fetch(`${TELEGRAM_API}/bot${token}/${method}`, {
+    const response = await fetch(`${base}/bot${token}/${method}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -38,14 +50,15 @@ async function tgCall<T>(method: string, payload: Record<string, unknown>, timeo
     const data = (await response.json().catch(() => null)) as { ok?: boolean; result?: T; description?: string } | null;
 
     if (!data?.ok) {
-      console.error(`[telegram] ${method} failed:`, data?.description || response.status);
-      return { result: null, status: response.status };
+      const description = data?.description || `HTTP ${response.status}`;
+      console.error(`[telegram] ${method} failed:`, description);
+      return { result: null, status: response.status, description };
     }
 
-    return { result: data.result ?? null, status: response.status };
+    return { result: data.result ?? null, status: response.status, description: '' };
   } catch (error) {
     console.error(`[telegram] ${method} error:`, error);
-    return { result: null, status: 0 };
+    return { result: null, status: 0, description: error instanceof Error ? error.message : 'нет ответа' };
   }
 }
 
@@ -59,34 +72,80 @@ export interface WidgetPayload {
   caption?: string;
 }
 
-/** Пока Telegram отвечает «метода нет», не дёргаем его на каждое сообщение. */
+type WidgetServer = 'main' | 'beta';
+
+const WIDGET_SERVERS: Record<WidgetServer, string> = { main: TELEGRAM_API, beta: TELEGRAM_BETA_API };
+
+/** Ответы «метода нет» и «бота не пустили»: этот сервер виджеты пока не отправит. */
+const SERVER_REFUSALS = new Set([401, 403, 404]);
+
+/** Пока ни один сервер не принимает виджеты, не дёргаем их на каждое сообщение. */
 const WIDGET_API_PAUSE_MS = 15 * 60 * 1000;
 let widgetApiPausedUntil = 0;
+/** Сервер, который последним принял виджет: с него и начинаем. */
+let widgetServer: WidgetServer = 'main';
+let lastWidgetAttempt: { at: number; ok: boolean; server: WidgetServer; description: string } | null = null;
 
 /**
- * Отправляет виджет (метод sendWidget из Bot API 10.4).
- * false — Telegram виджет не принял, и вызывающий отправляет обычный текст.
+ * Отправляет виджет (метод sendWidget из Bot API 10.4). Если основной сервер
+ * метода не знает, пробует бета-сервер Telegram.
+ * false — виджет не принят, и вызывающий отправляет обычный текст.
  */
-export async function sendWidget(chatId: number, widget: WidgetPayload, buttons?: InlineButton[][]): Promise<boolean> {
-  if (Date.now() < widgetApiPausedUntil) return false;
+export async function sendWidget(
+  chatId: number,
+  widget: WidgetPayload,
+  buttons?: InlineButton[][],
+  options: { ignorePause?: boolean } = {},
+): Promise<boolean> {
+  if (!options.ignorePause && Date.now() < widgetApiPausedUntil) return false;
 
-  const { result, status } = await tgCall<{ message_id?: number }>('sendWidget', {
+  const payload = {
     chat_id: chatId,
     html: widget.html,
     caption: widget.caption || undefined,
     parse_mode: widget.caption ? 'HTML' : undefined,
     reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
-  }, 10_000);
+  };
+  const order: WidgetServer[] = widgetServer === 'beta' ? ['beta', 'main'] : ['main', 'beta'];
 
-  if (status === 404) {
-    widgetApiPausedUntil = Date.now() + WIDGET_API_PAUSE_MS;
+  for (const server of order) {
+    const { result, status, description } = await tgCall<{ message_id?: number }>(
+      'sendWidget', payload, 10_000, WIDGET_SERVERS[server],
+    );
+    lastWidgetAttempt = { at: Date.now(), ok: result !== null, server, description };
+    if (result !== null) {
+      widgetServer = server;
+      widgetApiPausedUntil = 0;
+      return true;
+    }
+    // Ошибка про само сообщение (размер, права в группе) другой сервер не исправит.
+    if (!SERVER_REFUSALS.has(status)) return false;
   }
-  return result !== null;
+
+  widgetApiPausedUntil = Date.now() + WIDGET_API_PAUSE_MS;
+  return false;
 }
 
-/** Только для тестов: снять паузу после ответа «метода нет». */
+/** Что было с последней карточкой — для владельца бота (команда /widgets). */
+export function widgetDeliveryNote(now = Date.now()): string {
+  const attempt = lastWidgetAttempt;
+  if (!attempt) return 'С последнего перезапуска сервера карточек ещё не отправлялось.';
+
+  const time = new Date(attempt.at).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Yekaterinburg', hour: '2-digit', minute: '2-digit' });
+  if (attempt.ok) {
+    return `Последняя карточка в ${time} отправлена через ${attempt.server === 'beta' ? 'бета-сервер' : 'основной сервер'} Telegram.`;
+  }
+  const pause = widgetApiPausedUntil > now
+    ? ` Пока бот шлёт обычные сообщения и попробует снова через ${Math.ceil((widgetApiPausedUntil - now) / 60_000)} мин.`
+    : '';
+  return `Последняя попытка в ${time} не удалась: Telegram ответил «${attempt.description}».${pause}`;
+}
+
+/** Только для тестов: забыть паузу, выбранный сервер и последнюю попытку. */
 export function resetWidgetApiPauseForTests(): void {
   widgetApiPausedUntil = 0;
+  widgetServer = 'main';
+  lastWidgetAttempt = null;
 }
 
 export async function sendMessage(chatId: number, text: string, buttons?: InlineButton[][]): Promise<void> {

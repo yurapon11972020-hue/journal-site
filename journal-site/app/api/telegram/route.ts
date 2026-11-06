@@ -15,6 +15,7 @@ import {
   safeCompare,
   sendMessage,
   sendWidget,
+  widgetDeliveryNote,
   type InlineButton,
 } from '@/lib/telegram';
 import { findLectureGroup, lectureGroupsScreen, lectureSettingsScreen } from '@/lib/telegram-lecture-views';
@@ -53,6 +54,7 @@ import { calculatorWidget } from '@/lib/widgets/calculator';
 import type { WidgetMessage } from '@/lib/widgets/kit';
 import { ratingWidget } from '@/lib/widgets/rating';
 import { studentCardWidget } from '@/lib/widgets/student-card';
+import { testWidget } from '@/lib/widgets/test-card';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -86,8 +88,17 @@ function ownerChatId(): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-/** /widgets — состояние, /widgets on|off — общий выключатель анимированных карточек. */
-async function widgetCommandReply(argument?: string): Promise<string> {
+/**
+ * /widgets — состояние, /widgets on|off — общий выключатель анимированных карточек,
+ * /widgets test — прислать владельцу проверочную карточку и сказать, что ответил Telegram.
+ */
+async function widgetCommandReply(chatId: number, argument?: string): Promise<string> {
+  if (argument === 'test') {
+    const delivered = await sendWidget(chatId, testWidget(), undefined, { ignorePause: true });
+    return delivered
+      ? '✅ Telegram принял тестовую карточку — она выше. Если вместо анимации написано, что сообщение не поддерживается, обнови Telegram на этом устройстве.'
+      : `❌ Telegram не принял тестовую карточку. ${widgetDeliveryNote()}`;
+  }
   if (argument === 'on' || argument === 'off') {
     try {
       await setGlobalWidgets(argument === 'on');
@@ -99,9 +110,10 @@ async function widgetCommandReply(argument?: string): Promise<string> {
   if (!widgetsAllowedByEnv()) {
     return '🎨 Анимированные карточки выключены переменной TELEGRAM_WIDGETS на сервере — бот присылает обычные сообщения.';
   }
-  return (await widgetsEnabledGlobally())
+  const state = (await widgetsEnabledGlobally())
     ? '🎨 Анимированные карточки включены для всех. Выключить: /widgets off'
     : '🎨 Анимированные карточки выключены для всех — бот присылает обычные сообщения, как раньше. Включить: /widgets on';
+  return `${state}\n\n${widgetDeliveryNote()}\nПроверить сейчас: /widgets test`;
 }
 
 /** Рассылка включается только при ID владельца и пароле в окружении Render. */
@@ -124,9 +136,9 @@ async function handleBroadcastMessage(message: NonNullable<TelegramUpdate['messa
     return true;
   }
 
-  const widgetCommand = /^\/widgets(?:@[\w]+)?(?:\s+(on|off))?$/i.exec(text);
+  const widgetCommand = /^\/widgets(?:@[\w]+)?(?:\s+(on|off|test))?$/i.exec(text);
   if (widgetCommand && ownerChatId() === chat.id) {
-    await sendMessage(chat.id, await widgetCommandReply(widgetCommand[1]?.toLowerCase()));
+    await sendMessage(chat.id, await widgetCommandReply(chat.id, widgetCommand[1]?.toLowerCase()));
     return true;
   }
 

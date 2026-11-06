@@ -16,6 +16,7 @@ import {
 import { lectureWidget, type LectureWidgetInput } from '@/lib/widgets/lecture';
 import { ratingWidget } from '@/lib/widgets/rating';
 import { studentCardWidget } from '@/lib/widgets/student-card';
+import { testWidget } from '@/lib/widgets/test-card';
 
 import { WIDGET_STUDENTS, WIDGET_SUBJECTS, widgetJournal } from './helpers/widget-fixture';
 
@@ -281,6 +282,14 @@ describe('анимированные карточки (HTMLBubbles)', () => {
     live.flush();
     expect(live.byId.get('tl')!.textContent).toBe('до конца');
     expect(live.byId.get('dt')!.className).toBe('dot lv');
+  });
+
+  it('проверочная карточка владельца тоже в рамках профиля', () => {
+    const run = runWidget(expectWithinTelegramProfile(testWidget()).html);
+    run.flush();
+    run.byId.get('b')!.onclick?.();
+    expect(run.body.children.length).toBeGreaterThanOrEqual(36);
+    expect(run.haptics.notificationOccurred).toHaveBeenCalledWith('success');
   });
 
   it('данные журнала не могут закрыть <script> или подменить разметку', () => {
