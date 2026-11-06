@@ -31,7 +31,7 @@ function studentAction(kind: string, gi: number, studentId: number, name: string
   return withNameKey ? `${withSubject}:${studentNameKey(name, subjectName)}` : withSubject;
 }
 
-function describeSubscription(subscription: Subscription, total: number): string {
+export function describeSubscription(subscription: Subscription, total: number): string {
   if (!subscription.subjects.length) {
     return `все предметы (${total})`;
   }

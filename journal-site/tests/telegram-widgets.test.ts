@@ -16,6 +16,7 @@ import {
 import { lectureWidget, type LectureWidgetInput } from '@/lib/widgets/lecture';
 import { ratingWidget } from '@/lib/widgets/rating';
 import { studentCardWidget } from '@/lib/widgets/student-card';
+import * as screens from '@/lib/widgets/screens';
 import { testWidget } from '@/lib/widgets/test-card';
 
 import { WIDGET_STUDENTS, WIDGET_SUBJECTS, widgetJournal } from './helpers/widget-fixture';
@@ -26,9 +27,10 @@ const ALLOWED_CSS = new Set([
   'min-width', 'min-height', 'max-width', 'max-height', 'margin', 'margin-top', 'margin-right', 'margin-bottom',
   'margin-left', 'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'border',
   'border-color', 'border-radius', 'box-sizing', 'position', 'top', 'right', 'bottom', 'left', 'overflow',
-  'color', 'background', 'font', 'font-size', 'font-weight', 'line-height', 'font-variant-numeric', 'text-align',
+  'color', 'background', 'font', 'font-size', 'font-weight', 'font-style', 'line-height', 'font-variant-numeric', 'text-align',
   'text-decoration', 'white-space', 'text-overflow', 'transform', 'transform-origin', 'transition',
-  'transition-delay', 'animation', 'animation-name', 'animation-delay', 'animation-duration',
+  'transition-delay', 'animation', 'animation-name', 'animation-delay', 'animation-duration', 'outline',
+  'outline-offset', 'aspect-ratio', 'grid-template-columns',
 ]);
 
 /** Элементы, которые карточки создают; все — из профиля (canvas, button и текстовые). */
@@ -282,6 +284,39 @@ describe('анимированные карточки (HTMLBubbles)', () => {
     live.flush();
     expect(live.byId.get('tl')!.textContent).toBe('до конца');
     expect(live.byId.get('dt')!.className).toBe('dot lv');
+  });
+
+  it('все экраны бота собираются в рамках профиля и их скрипты отрабатывают', () => {
+    const data = widgetJournal();
+    data.students[0].subjects[0].lessonTopics = [{ row: 1, dateLabel: '2.09', topic: 'Введение', extra: 'Конспект' }];
+    const subscription = { chatId: 1, groupId: 'g', studentId: 1, studentName: WIDGET_STUDENTS[0], subjects: [] };
+    const all: Array<[string, WidgetMessage | null]> = [
+      ['home', screens.homeWidget(10)],
+      ['group', screens.groupWidget(data)],
+      ['students', screens.studentsWidget(data)],
+      ['grades', screens.gradesWidget(data, 1)],
+      ['absences', screens.absencesWidget(data, 1)],
+      ['subjects', screens.subjectsWidget(data)],
+      ['subject', screens.subjectDetailWidget(data, 0)],
+      ['topics', screens.topicsWidget(data, 0, 0)],
+      ['notify', screens.notifyMenuWidget(data, [subscription])],
+      ['notify-empty', screens.notifyMenuWidget(data, [])],
+      ['notify-student', screens.notifyStudentWidget(data, 1, subscription)],
+      ['notify-subjects', screens.notifySubjectsWidget(data, 1)],
+      ['lectures', screens.lectureGroupsWidget(['ИСиП-24/1'], [])],
+      ['lecture-settings', screens.lectureSettingsWidget('ИСиП-24/1')],
+    ];
+    for (const [name, widget] of all) {
+      const run = runWidget(expectWithinTelegramProfile(widget).html);
+      run.flush();
+      expect(run.byId.get('ht')!.textContent, name).not.toBe('');
+    }
+
+    const grid = runWidget(screens.studentsWidget(data)!.html);
+    grid.byId.get('gr')!.children[0].onclick?.();
+    expect(grid.byId.get('gd')!.textContent).toContain('Абрамов П.И.');
+    expect(screens.gradesWidget(data, 999)).toBeNull();
+    expect(screens.topicsWidget(data, 1, 0)).toBeNull();
   });
 
   it('проверочная карточка владельца тоже в рамках профиля', () => {

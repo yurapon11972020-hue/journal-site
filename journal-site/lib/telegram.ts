@@ -182,6 +182,16 @@ export async function editMessage(chatId: number, messageId: number, text: strin
   return result !== null;
 }
 
+/** Меняет только кнопки под сообщением — так переключатели работают и под карточкой. */
+export async function editReplyMarkup(chatId: number, messageId: number, buttons: InlineButton[][]): Promise<boolean> {
+  const result = await tg('editMessageReplyMarkup', {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: { inline_keyboard: buttons },
+  });
+  return result !== null;
+}
+
 export async function answerCallback(callbackId: string, text?: string): Promise<void> {
   await tg('answerCallbackQuery', {
     callback_query_id: callbackId,

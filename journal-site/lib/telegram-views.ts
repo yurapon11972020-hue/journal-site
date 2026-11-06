@@ -1,12 +1,19 @@
 import { escapeHtml, type InlineButton } from '@/lib/telegram';
 import type { JournalData, JournalGroupRef, ReportCard, StudentRecord, SubjectSummary } from '@/lib/types';
+import type { WidgetMessage } from '@/lib/widgets/kit';
 
 const MAX_TEXT_LENGTH = 3800;
-const TOPICS_PER_PAGE = 6;
+export const TOPICS_PER_PAGE = 6;
 
 export interface BotScreen {
   text: string;
   buttons: InlineButton[][];
+  /** Тот же экран анимированной карточкой (HTMLBubbles); null — только текст. */
+  widget?: WidgetMessage | null;
+  /** Кнопки под карточкой, если они не такие, как под текстом. */
+  widgetButtons?: InlineButton[][];
+  /** Тот же экран после переключателя: под карточкой меняются только кнопки. */
+  sameScreen?: boolean;
 }
 
 function getSiteBaseUrl(): string | null {

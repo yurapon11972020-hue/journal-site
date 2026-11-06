@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   edit: vi.fn(),
   answer: vi.fn(),
   remove: vi.fn(),
+  markup: vi.fn(),
   widget: vi.fn(),
   groups: vi.fn(),
   data: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('@/lib/telegram', async (importOriginal) => ({
   editMessage: mocks.edit,
   answerCallback: mocks.answer,
   deleteMessage: mocks.remove,
+  editReplyMarkup: mocks.markup,
   sendWidget: mocks.widget,
 }));
 
@@ -75,6 +77,7 @@ beforeEach(() => {
   mocks.widget.mockResolvedValue(true);
   mocks.edit.mockResolvedValue(true);
   mocks.remove.mockResolvedValue(true);
+  mocks.markup.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -120,17 +123,59 @@ describe('бот с анимированными карточками', () => {
     expect(mocks.remove).not.toHaveBeenCalled();
   });
 
-  it('кнопка под карточкой открывает следующий экран новым сообщением', async () => {
+  it('каждый экран — карточка: новая заменяет ту, на кнопку которой нажали', async () => {
+    const screens: Array<[string, string]> = [
+      ['grp', 'Электронный журнал'],
+      ['g:0', 'ИСиП-24/1'],
+      ['s:0', 'Студенты'],
+      ['m:0:1', 'Оценки'],
+      ['n:0:1', 'Пропуски'],
+      ['p:0', 'Предметы'],
+      ['ps:0:0', 'Математика'],
+      ['w:0', 'Уведомления'],
+      ['wp:0:1', 'Абрамов Пётр Ильич'],
+      ['ws:0:1', 'Выбери предметы'],
+    ];
+    for (const [action, caption] of screens) {
+      mocks.widget.mockClear();
+      mocks.remove.mockClear();
+      await click(action, { text: undefined, widget: { is_copy: false } });
+      expect(mocks.widget.mock.calls[0]?.[1].caption, action).toContain(caption);
+      expect(mocks.remove, action).toHaveBeenCalledWith(42, 100);
+    }
+    expect(mocks.edit).not.toHaveBeenCalled();
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+
+  it('если карточку не приняли, из карточки приходит текст, а она сама убирается', async () => {
+    mocks.widget.mockResolvedValue(false);
+
     await click('s:0', { text: undefined, widget: { is_copy: false } });
 
     expect(mocks.edit).not.toHaveBeenCalled();
-    expect(mocks.send).toHaveBeenCalledTimes(1);
     expect(mocks.send.mock.calls[0][1]).toContain('Студенты');
+    expect(mocks.remove).toHaveBeenCalledWith(42, 100);
+  });
+
+  it('галочки предметов под карточкой меняются на месте, без новой карточки', async () => {
+    await click('wt:0:1:0', { text: undefined, widget: { is_copy: false } });
+
+    expect(mocks.markup).toHaveBeenCalledTimes(1);
+    const buttons = buttonTexts(mocks.markup.mock.calls[0][2]);
+    expect(buttons).toContain('✅ Математика');
+    expect(mocks.widget).not.toHaveBeenCalled();
+    expect(mocks.remove).not.toHaveBeenCalled();
+
+    // Тот же переключатель на старом текстовом меню приводит карточку на его место.
+    await click('wt:0:1:0');
+    expect(mocks.widget).toHaveBeenCalledTimes(1);
+    expect(mocks.remove).toHaveBeenCalledWith(42, 100);
   });
 
   it('каждый чат может выключить карточки кнопкой в меню', async () => {
     await say('/start');
-    const start = mocks.send.mock.calls[0][2] as Button[][];
+    expect(mocks.widget.mock.calls[0][1].caption).toContain('Электронный журнал');
+    const start = mocks.widget.mock.calls[0][2] as Button[][];
     expect(start.flat().find((button) => button.callback_data === 'wx|grp')?.text).toBe('🎨 Анимированные карточки: вкл');
 
     await click('wx|grp');
@@ -138,13 +183,14 @@ describe('бот с анимированными карточками', () => {
     expect(buttonTexts(mocks.edit.mock.calls[0][3])).toContain('🎨 Анимированные карточки: выкл');
 
     mocks.edit.mockClear();
+    mocks.widget.mockClear();
     await click('c:0:1');
     expect(mocks.widget).not.toHaveBeenCalled();
     expect(mocks.edit.mock.calls[0][2]).toContain('👤 <b>Абрамов Пётр Ильич</b>');
 
     await click('wx|g:1');
     expect(settings.values.get('chat:42')).toBe(true);
-    expect(mocks.edit.mock.lastCall?.[2]).toContain('ИСиП-24/1');
+    expect(mocks.widget.mock.lastCall?.[1].caption).toContain('ИСиП-24/1');
   });
 
   it('владелец выключает и включает карточки для всех командой /widgets', async () => {
@@ -189,7 +235,7 @@ describe('бот с анимированными карточками', () => {
     await say('/widgets off');
 
     expect(settings.values.has('global')).toBe(false);
-    expect(mocks.send.mock.calls[0][1]).toContain('Электронный журнал');
+    expect(mocks.widget.mock.calls[0][1].caption).toContain('Электронный журнал');
   });
 
   it('переменная TELEGRAM_WIDGETS=off возвращает бота к обычным сообщениям', async () => {
