@@ -10,6 +10,7 @@ import {
   answerCallback,
   deleteMessage,
   editMessage,
+  editReplyMarkup,
   escapeHtml,
   getWebhookSecret,
   safeCompare,
@@ -53,6 +54,21 @@ import {
 import { calculatorWidget } from '@/lib/widgets/calculator';
 import type { WidgetMessage } from '@/lib/widgets/kit';
 import { ratingWidget } from '@/lib/widgets/rating';
+import {
+  absencesWidget,
+  gradesWidget,
+  groupWidget,
+  homeWidget,
+  lectureGroupsWidget,
+  lectureSettingsWidget,
+  notifyMenuWidget,
+  notifyStudentWidget,
+  notifySubjectsWidget,
+  studentsWidget,
+  subjectDetailWidget,
+  subjectsWidget,
+  topicsWidget,
+} from '@/lib/widgets/screens';
 import { studentCardWidget } from '@/lib/widgets/student-card';
 import { testWidget } from '@/lib/widgets/test-card';
 
@@ -262,9 +278,29 @@ function freeSubscriptionId(list: Subscription[], desiredId: number): number {
   return free;
 }
 
-async function notificationMenu(data: JournalData, gi: number, groupId: string, chatId: number): Promise<BotScreen> {
+/** Прикрепляет к экрану его карточку, если карточки в этом чате включены. */
+function withWidget(
+  screen: BotScreen,
+  widgets: boolean,
+  build: () => WidgetMessage | null,
+  widgetButtons?: InlineButton[][],
+): BotScreen {
+  if (!widgets) return screen;
+  try {
+    const widget = build();
+    return widget ? { ...screen, widget, widgetButtons } : screen;
+  } catch (error) {
+    // Сломанная карточка не должна ломать экран: остаётся текст.
+    console.error('[карточки] Не удалось собрать карточку:', error);
+    return screen;
+  }
+}
+
+async function notificationMenu(data: JournalData, gi: number, groupId: string, chatId: number, widgets: boolean): Promise<BotScreen> {
   const list = await chatSubscriptions(chatId, groupId);
-  if (groupId !== REPLACED_ISIP_R_GROUP_ID) return notifyMenuScreen(data, gi, list);
+  if (groupId !== REPLACED_ISIP_R_GROUP_ID) {
+    return withWidget(notifyMenuScreen(data, gi, list), widgets, () => notifyMenuWidget(data, list));
+  }
 
   const visible: Subscription[] = [];
   const missing: Subscription[] = [];
@@ -293,38 +329,44 @@ async function notificationMenu(data: JournalData, gi: number, groupId: string, 
       }]);
     }
   }
-  return screen;
+  return withWidget(screen, widgets, () => notifyMenuWidget(data, visible));
 }
 
-async function refreshedNotificationMenu(data: JournalData, gi: number, groupId: string, chatId: number): Promise<BotScreen> {
-  const screen = await notificationMenu(data, gi, groupId, chatId);
+async function refreshedNotificationMenu(data: JournalData, gi: number, groupId: string, chatId: number, widgets: boolean): Promise<BotScreen> {
+  const screen = await notificationMenu(data, gi, groupId, chatId, widgets);
   screen.text = `Кнопки обновлены после замены журнала. Выбери студента ещё раз.\n\n${screen.text}`;
   return screen;
 }
 
 /** Раздел лекций получает группы из расписания и не обращается к Excel журнала. */
-async function buildLectureScreen(action: string, chatId: number): Promise<BotScreen> {
+async function buildLectureScreen(action: string, chatId: number, widgets: boolean): Promise<BotScreen> {
   const schedule = await getScheduleData();
   const groups = [...schedule.groups].sort((a, b) => a.localeCompare(b, 'ru'));
   const store = getLectureStore();
+  const groupsList = async () => {
+    const subscriptions = await store.listByChat(chatId);
+    return withWidget(lectureGroupsScreen(groups, subscriptions), widgets, () => lectureGroupsWidget(groups, subscriptions));
+  };
 
   if (action === 'lg') {
-    return lectureGroupsScreen(groups, await store.listByChat(chatId));
+    return groupsList();
   }
 
   const [kind, key] = action.split(':');
   const groupName = findLectureGroup(groups, key || '');
   if (!groupName) {
-    return lectureGroupsScreen(groups, await store.listByChat(chatId));
+    return groupsList();
   }
 
-  if (kind === 'lv' || kind === 'll') {
+  const toggled = kind === 'lv' || kind === 'll';
+  if (toggled) {
     const mode: LectureMode = kind === 'lv' ? 'video' : 'lecture';
     const current = await store.get(chatId, groupName);
     await store.setMode(chatId, groupName, mode, !current?.[mode]);
   }
 
-  return lectureSettingsScreen(groupName, await store.get(chatId, groupName));
+  const screen = withWidget(lectureSettingsScreen(groupName, await store.get(chatId, groupName)), widgets, () => lectureSettingsWidget(groupName));
+  return toggled ? { ...screen, sameScreen: true } : screen;
 }
 
 /** Кнопка карточек в меню; null — карточки выключены для всех, кнопка не нужна. */
@@ -333,44 +375,8 @@ async function widgetToggleFor(chatId: number, back: string): Promise<WidgetTogg
   return on === null ? null : { on, back };
 }
 
-/** Экраны, которые в чате с карточками приходят анимированным виджетом. */
-async function buildWidgetScreen(action: string, chatId: number): Promise<{ widget: WidgetMessage; buttons: InlineButton[][] } | null> {
-  const [kind, giRaw, idRaw] = action.split(':');
-  if (kind !== 'c' && kind !== 'k' && kind !== 'r') return null;
-  if (!(await widgetsEnabledFor(chatId))) return null;
-
-  try {
-    const groups = await getJournalGroups();
-    const gi = Number.parseInt(giRaw ?? '0', 10) || 0;
-    const { data } = await loadGroupData(groups, gi);
-    const studentId = Number.parseInt(idRaw ?? '0', 10) || 0;
-    if (kind === 'c') {
-      const widget = studentCardWidget(data, studentId);
-      if (!widget) return null;
-      const buttons = studentCardScreen(data, gi, studentId).buttons;
-      if (calculatorWidget(data, studentId)) {
-        buttons.unshift([{ text: '🧮 Калькулятор оценок', callback_data: `k:${gi}:${studentId}` }]);
-      }
-      return { widget, buttons };
-    }
-    if (kind === 'k') {
-      const widget = calculatorWidget(data, studentId);
-      return widget ? { widget, buttons: [[{ text: '⬅️ К табелю', callback_data: `c:${gi}:${studentId}` }]] } : null;
-    }
-    const widget = ratingWidget(data);
-    return widget ? { widget, buttons: ratingScreen(data, gi).buttons } : null;
-  } catch (error) {
-    console.error('[карточки] Не удалось собрать карточку:', error);
-    return null;
-  }
-}
-
 async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
   try {
-    if (action === 'lg' || /^(ls|lv|ll):/.test(action)) {
-      return await buildLectureScreen(action, chatId);
-    }
-
     if (action.startsWith('wx|')) {
       const current = await chatWidgetsState(chatId);
       if (current !== null) {
@@ -380,15 +386,21 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
       return await buildScreen(back && !back.startsWith('wx|') ? back : 'start', chatId);
     }
 
+    const widgets = await widgetsEnabledFor(chatId);
+
+    if (action === 'lg' || /^(ls|lv|ll):/.test(action)) {
+      return await buildLectureScreen(action, chatId, widgets);
+    }
+
     const groups = await getJournalGroups();
 
     if (action === 'grp' || action === 'start') {
       // Если группа всего одна — сразу открываем её журнал без лишнего экрана.
       if (groups.length === 1) {
         const { data, gi, group } = await loadGroupData(groups, 0);
-        return groupMenuScreen(data, gi, groups.length, group, await widgetToggleFor(chatId, 'g:0'));
+        return withWidget(groupMenuScreen(data, gi, groups.length, group, await widgetToggleFor(chatId, 'g:0')), widgets, () => groupWidget(data));
       }
-      return groupsScreen(groups, await widgetToggleFor(chatId, 'grp'));
+      return withWidget(groupsScreen(groups, await widgetToggleFor(chatId, 'grp')), widgets, () => homeWidget(groups.length));
     }
 
     const parts = action.split(':');
@@ -400,60 +412,74 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
     switch (kind) {
       case 'g': {
         const { data, group } = await loadGroupData(groups, gi);
-        return groupMenuScreen(data, gi, groups.length, group, await widgetToggleFor(chatId, `g:${gi}`));
+        return withWidget(groupMenuScreen(data, gi, groups.length, group, await widgetToggleFor(chatId, `g:${gi}`)), widgets, () => groupWidget(data));
       }
       case 's': {
         const { data } = await loadGroupData(groups, gi);
-        return studentsScreen(data, gi);
+        return withWidget(studentsScreen(data, gi), widgets, () => studentsWidget(data));
+      }
+      case 'c': {
+        const { data } = await loadGroupData(groups, gi);
+        const screen = studentCardScreen(data, gi, a);
+        const calculator = widgets && calculatorWidget(data, a)
+          ? [[{ text: '🧮 Калькулятор оценок', callback_data: `k:${gi}:${a}` }], ...screen.buttons]
+          : screen.buttons;
+        return withWidget(screen, widgets, () => studentCardWidget(data, a), calculator);
       }
       // «k» — калькулятор из карточки; без карточек вместо него обычный табель.
-      case 'c':
       case 'k': {
         const { data } = await loadGroupData(groups, gi);
-        return studentCardScreen(data, gi, a);
+        return withWidget(studentCardScreen(data, gi, a), widgets, () => calculatorWidget(data, a), [
+          [{ text: '⬅️ К табелю', callback_data: `c:${gi}:${a}` }],
+        ]);
       }
       case 'm': {
         const { data } = await loadGroupData(groups, gi);
-        return studentGradesScreen(data, gi, a);
+        return withWidget(studentGradesScreen(data, gi, a), widgets, () => gradesWidget(data, a));
       }
       case 'n': {
         const { data } = await loadGroupData(groups, gi);
-        return studentAbsencesScreen(data, gi, a);
+        return withWidget(studentAbsencesScreen(data, gi, a), widgets, () => absencesWidget(data, a));
       }
       case 'r': {
         const { data } = await loadGroupData(groups, gi);
-        return ratingScreen(data, gi);
+        return withWidget(ratingScreen(data, gi), widgets, () => ratingWidget(data));
       }
       case 'p': {
         const { data } = await loadGroupData(groups, gi);
-        return subjectsScreen(data, gi);
+        return withWidget(subjectsScreen(data, gi), widgets, () => subjectsWidget(data));
       }
       case 'ps': {
         const { data } = await loadGroupData(groups, gi);
-        return subjectDetailScreen(data, gi, a);
+        return withWidget(subjectDetailScreen(data, gi, a), widgets, () => subjectDetailWidget(data, a));
       }
       case 't': {
         const { data } = await loadGroupData(groups, gi);
-        return subjectTopicsScreen(data, gi, a, b);
+        return withWidget(subjectTopicsScreen(data, gi, a, b), widgets, () => topicsWidget(data, a, b));
       }
 
       // ---- уведомления об оценках ----
       case 'w': {
         const { data, group } = await loadGroupData(groups, gi);
-        return notificationMenu(data, gi, group.id, chatId);
+        return notificationMenu(data, gi, group.id, chatId, widgets);
       }
       case 'wp': {
         const { data, group } = await loadGroupData(groups, gi);
         if (!validStudentButton(group.id, data, a, parts[3])) {
-          return refreshedNotificationMenu(data, gi, group.id, chatId);
+          return refreshedNotificationMenu(data, gi, group.id, chatId, widgets);
         }
         const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
-        return notifyStudentScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID);
+        const subscription = mergedSubscription(matches, a);
+        return withWidget(
+          notifyStudentScreen(data, gi, a, subscription, group.id === REPLACED_ISIP_R_GROUP_ID),
+          widgets,
+          () => notifyStudentWidget(data, a, subscription),
+        );
       }
       case 'wa': {
         const { data, group } = await loadGroupData(groups, gi);
         if (!validStudentButton(group.id, data, a, parts[3])) {
-          return refreshedNotificationMenu(data, gi, group.id, chatId);
+          return refreshedNotificationMenu(data, gi, group.id, chatId, widgets);
         }
         const student = data.students.find((item) => item.id === a);
         if (student) {
@@ -473,20 +499,24 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
             await store.remove(chatId, group.id, duplicate.studentId);
           }
         }
-        return notificationMenu(data, gi, group.id, chatId);
+        return notificationMenu(data, gi, group.id, chatId, widgets);
       }
       case 'ws': {
         const { data, group } = await loadGroupData(groups, gi);
         if (!validStudentButton(group.id, data, a, parts[3])) {
-          return refreshedNotificationMenu(data, gi, group.id, chatId);
+          return refreshedNotificationMenu(data, gi, group.id, chatId, widgets);
         }
         const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
-        return notifySubjectsScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID);
+        return withWidget(
+          notifySubjectsScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID),
+          widgets,
+          () => notifySubjectsWidget(data, a),
+        );
       }
       case 'wt': {
         const { data, group } = await loadGroupData(groups, gi);
         if (!validStudentButton(group.id, data, a, parts[4], b)) {
-          return refreshedNotificationMenu(data, gi, group.id, chatId);
+          return refreshedNotificationMenu(data, gi, group.id, chatId, widgets);
         }
         const student = data.students.find((item) => item.id === a);
         const name = subjectNames(data)[b];
@@ -527,42 +557,76 @@ async function buildScreen(action: string, chatId: number): Promise<BotScreen> {
         }
 
         const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
-        return notifySubjectsScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID);
+        const screen = withWidget(
+          notifySubjectsScreen(data, gi, a, mergedSubscription(matches, a), group.id === REPLACED_ISIP_R_GROUP_ID),
+          widgets,
+          () => notifySubjectsWidget(data, a),
+        );
+        return { ...screen, sameScreen: true };
       }
       case 'wd': {
         const { data, group } = await loadGroupData(groups, gi);
         if (!validStudentButton(group.id, data, a, parts[3])) {
-          return refreshedNotificationMenu(data, gi, group.id, chatId);
+          return refreshedNotificationMenu(data, gi, group.id, chatId, widgets);
         }
         const matches = matchingSubscriptions(await chatSubscriptions(chatId, group.id), group.id, data, a);
         for (const subscription of matches) {
           await getSubscriptionStore().remove(chatId, group.id, subscription.studentId);
         }
-        return notificationMenu(data, gi, group.id, chatId);
+        return notificationMenu(data, gi, group.id, chatId, widgets);
       }
       case 'wo': {
         const { data, group } = await loadGroupData(groups, gi);
-        if (group.id !== REPLACED_ISIP_R_GROUP_ID) return notificationMenu(data, gi, group.id, chatId);
+        if (group.id !== REPLACED_ISIP_R_GROUP_ID) return notificationMenu(data, gi, group.id, chatId, widgets);
         const list = await chatSubscriptions(chatId, group.id);
         const orphan = list.find((item) => item.studentId === a && studentNameKey(item.studentName) === parts[3]);
         const safelyMatched = orphan && data.students.some((item) =>
           normalizedStudentName(item.name) === normalizedStudentName(orphan.studentName) && currentStudent(data, item.id),
         );
         if (orphan && !safelyMatched) await getSubscriptionStore().remove(chatId, group.id, orphan.studentId);
-        return notificationMenu(data, gi, group.id, chatId);
+        return notificationMenu(data, gi, group.id, chatId, widgets);
       }
       default: {
         if (groups.length === 1) {
           const { data, gi: safeGi, group } = await loadGroupData(groups, 0);
-          return groupMenuScreen(data, safeGi, groups.length, group, await widgetToggleFor(chatId, `g:${safeGi}`));
+          return withWidget(groupMenuScreen(data, safeGi, groups.length, group, await widgetToggleFor(chatId, `g:${safeGi}`)), widgets, () => groupWidget(data));
         }
-        return groupsScreen(groups, await widgetToggleFor(chatId, 'grp'));
+        return withWidget(groupsScreen(groups, await widgetToggleFor(chatId, 'grp')), widgets, () => homeWidget(groups.length));
       }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     return errorScreen(message);
   }
+}
+
+/**
+ * Показывает экран: карточкой, если она есть, иначе текстом.
+ * Экран заменяет сообщение, на кнопку которого нажали, — в чате остаётся одно меню.
+ */
+async function showScreen(
+  chatId: number,
+  screen: BotScreen,
+  source?: { messageId: number; fromWidget: boolean },
+): Promise<void> {
+  if (screen.widget) {
+    const buttons = screen.widgetButtons ?? screen.buttons;
+    // Переключатель под карточкой: меняются только галочки в кнопках, карточка остаётся.
+    if (source?.fromWidget && screen.sameScreen && await editReplyMarkup(chatId, source.messageId, buttons)) {
+      return;
+    }
+    if (await sendWidget(chatId, screen.widget, buttons)) {
+      if (source) await deleteMessage(chatId, source.messageId);
+      return;
+    }
+  }
+
+  if (source && !source.fromWidget && await editMessage(chatId, source.messageId, screen.text, screen.buttons)) {
+    return;
+  }
+  await sendMessage(chatId, screen.text, screen.buttons);
+  // Текст карточки не отредактировать: новый экран пришёл отдельно, а её убираем.
+  if (source?.fromWidget) await deleteMessage(chatId, source.messageId);
 }
 
 export async function POST(request: Request) {
@@ -599,21 +663,8 @@ export async function POST(request: Request) {
 
       if (chatId && messageId) {
         await rememberPrivateChat(chatId, query.message?.chat.type);
-        // Текст виджета не отредактировать: следующий экран приходит новым сообщением.
-        const fromWidget = query.message?.widget !== undefined;
-        const widgetScreen = await buildWidgetScreen(action, chatId);
-        if (widgetScreen && await sendWidget(chatId, widgetScreen.widget, widgetScreen.buttons)) {
-          // Меню, из которого открыли карточку, переезжает под неё кнопками.
-          if (!fromWidget) {
-            await deleteMessage(chatId, messageId);
-          }
-        } else {
-          const screen = await buildScreen(action, chatId);
-          const edited = !fromWidget && await editMessage(chatId, messageId, screen.text, screen.buttons);
-          if (!edited) {
-            await sendMessage(chatId, screen.text, screen.buttons);
-          }
-        }
+        const screen = await buildScreen(action, chatId);
+        await showScreen(chatId, screen, { messageId, fromWidget: query.message?.widget !== undefined });
       }
     } else if (update.message) {
       const chatId = update.message.chat.id;
@@ -627,7 +678,7 @@ export async function POST(request: Request) {
       if (update.message.text) {
         const command = update.message.text.trim().split(/\s+/)[0];
         const screen = await buildScreen(/^\/lectures(?:@[\w]+)?$/i.test(command) ? 'lg' : 'start', chatId);
-        await sendMessage(chatId, screen.text, screen.buttons);
+        await showScreen(chatId, screen);
       }
     }
   } catch (error) {
