@@ -168,6 +168,21 @@ describe('бот с анимированными карточками', () => {
     expect(mocks.send.mock.lastCall?.[1]).toContain('Выключить: /widgets off');
   });
 
+  it('/widgets test присылает владельцу тестовую карточку и говорит, принял ли её Telegram', async () => {
+    process.env.TELEGRAM_BROADCAST_ADMIN_ID = '42';
+
+    await say('/widgets test');
+    expect(mocks.widget).toHaveBeenCalledWith(42, expect.objectContaining({ caption: expect.stringContaining('Тестовая карточка') }), undefined, { ignorePause: true });
+    expect(mocks.send.mock.lastCall?.[1]).toContain('✅ Telegram принял тестовую карточку');
+
+    mocks.widget.mockResolvedValue(false);
+    await say('/widgets test');
+    expect(mocks.send.mock.lastCall?.[1]).toContain('❌ Telegram не принял тестовую карточку');
+
+    await say('/widgets');
+    expect(mocks.send.mock.lastCall?.[1]).toContain('Проверить сейчас: /widgets test');
+  });
+
   it('чужая команда /widgets ничего не меняет', async () => {
     process.env.TELEGRAM_BROADCAST_ADMIN_ID = '7';
 
