@@ -13,5 +13,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     // Тесты кэша пишут файлы и подменяют глобальный fetch — параллельно им тесно.
     fileParallelism: false,
+    // Старые тесты проверяют текстовые сообщения; тесты карточек включают их сами.
+    env: { TELEGRAM_WIDGETS: 'off' },
   },
 });

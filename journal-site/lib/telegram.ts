@@ -18,7 +18,13 @@ export function getWebhookSecret(): string | undefined {
   return process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || undefined;
 }
 
-async function tg<T = unknown>(method: string, payload: Record<string, unknown>, timeoutMs?: number): Promise<T | null> {
+interface TelegramCall<T> {
+  result: T | null;
+  /** HTTP-статус ответа; 0 — ответа не было (сеть, тайм-аут). */
+  status: number;
+}
+
+async function tgCall<T>(method: string, payload: Record<string, unknown>, timeoutMs?: number): Promise<TelegramCall<T>> {
   const token = getBotToken();
   try {
     const response = await fetch(`${TELEGRAM_API}/bot${token}/${method}`, {
@@ -33,14 +39,54 @@ async function tg<T = unknown>(method: string, payload: Record<string, unknown>,
 
     if (!data?.ok) {
       console.error(`[telegram] ${method} failed:`, data?.description || response.status);
-      return null;
+      return { result: null, status: response.status };
     }
 
-    return data.result ?? null;
+    return { result: data.result ?? null, status: response.status };
   } catch (error) {
     console.error(`[telegram] ${method} error:`, error);
-    return null;
+    return { result: null, status: 0 };
   }
+}
+
+async function tg<T = unknown>(method: string, payload: Record<string, unknown>, timeoutMs?: number): Promise<T | null> {
+  return (await tgCall<T>(method, payload, timeoutMs)).result;
+}
+
+/** HTML-виджет (HTMLBubbles) и подпись к нему для старых клиентов и списка чатов. */
+export interface WidgetPayload {
+  html: string;
+  caption?: string;
+}
+
+/** Пока Telegram отвечает «метода нет», не дёргаем его на каждое сообщение. */
+const WIDGET_API_PAUSE_MS = 15 * 60 * 1000;
+let widgetApiPausedUntil = 0;
+
+/**
+ * Отправляет виджет (метод sendWidget из Bot API 10.4).
+ * false — Telegram виджет не принял, и вызывающий отправляет обычный текст.
+ */
+export async function sendWidget(chatId: number, widget: WidgetPayload, buttons?: InlineButton[][]): Promise<boolean> {
+  if (Date.now() < widgetApiPausedUntil) return false;
+
+  const { result, status } = await tgCall<{ message_id?: number }>('sendWidget', {
+    chat_id: chatId,
+    html: widget.html,
+    caption: widget.caption || undefined,
+    parse_mode: widget.caption ? 'HTML' : undefined,
+    reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
+  }, 10_000);
+
+  if (status === 404) {
+    widgetApiPausedUntil = Date.now() + WIDGET_API_PAUSE_MS;
+  }
+  return result !== null;
+}
+
+/** Только для тестов: снять паузу после ответа «метода нет». */
+export function resetWidgetApiPauseForTests(): void {
+  widgetApiPausedUntil = 0;
 }
 
 export async function sendMessage(chatId: number, text: string, buttons?: InlineButton[][]): Promise<void> {

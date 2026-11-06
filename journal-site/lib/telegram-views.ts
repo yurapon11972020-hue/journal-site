@@ -43,7 +43,7 @@ function avgEmoji(value: number | null): string {
   return '🔴';
 }
 
-function shortName(fullName: string): string {
+export function shortName(fullName: string): string {
   const parts = fullName.split(' ').filter(Boolean);
   if (parts.length <= 1) {
     return fullName;
@@ -94,7 +94,7 @@ function normName(value: string): string {
     .replace(/\s+/g, ' ');
 }
 
-function cardForStudent(data: JournalData, student: StudentRecord): ReportCard | null {
+export function cardForStudent(data: JournalData, student: StudentRecord): ReportCard | null {
   const target = normName(student.name);
   const byName = data.reportCards.find((card) => normName(card.studentName) === target);
   if (byName) {
@@ -103,7 +103,7 @@ function cardForStudent(data: JournalData, student: StudentRecord): ReportCard |
   return data.reportCards.find((card) => card.studentId === student.id) ?? null;
 }
 
-function studentDisplayStats(data: JournalData, student: StudentRecord): { avg: number | null; invalid: number; valid: number } {
+export function studentDisplayStats(data: JournalData, student: StudentRecord): { avg: number | null; invalid: number; valid: number } {
   const card = cardForStudent(data, student);
   return {
     avg: card?.overallAverage ?? student.overallAverage,
@@ -112,16 +112,40 @@ function studentDisplayStats(data: JournalData, student: StudentRecord): { avg: 
   };
 }
 
-export function groupsScreen(groups: JournalGroupRef[]): BotScreen {
+/**
+ * Кнопка анимированных карточек (HTMLBubbles) в меню.
+ * on — включены ли они в этом чате, back — экран, который показать после нажатия.
+ */
+export interface WidgetToggle {
+  on: boolean;
+  back: string;
+}
+
+function widgetToggleRow(toggle: WidgetToggle | null | undefined): InlineButton[][] {
+  if (!toggle) return [];
+  return [[{
+    text: toggle.on ? '🎨 Анимированные карточки: вкл' : '🎨 Анимированные карточки: выкл',
+    callback_data: `wx|${toggle.back}`,
+  }]];
+}
+
+export function groupsScreen(groups: JournalGroupRef[], widgetToggle?: WidgetToggle | null): BotScreen {
   const buttons: InlineButton[][] = groups.map((group, index) => [
     { text: `🎓 ${group.groupName}`, callback_data: `g:${index}` },
   ]);
   buttons.push([{ text: '📅 Напоминания о лекциях', callback_data: 'lg' }]);
+  buttons.push(...widgetToggleRow(widgetToggle));
 
   return { text: '📖 <b>Электронный журнал</b>\n\nВыбери группу:', buttons };
 }
 
-export function groupMenuScreen(data: JournalData, gi: number, totalGroups: number, group?: JournalGroupRef): BotScreen {
+export function groupMenuScreen(
+  data: JournalData,
+  gi: number,
+  totalGroups: number,
+  group?: JournalGroupRef,
+  widgetToggle?: WidgetToggle | null,
+): BotScreen {
   const stats = data.students.map((student) => studentDisplayStats(data, student));
   const averages = stats.map((s) => s.avg).filter((v): v is number => v !== null);
   const groupAvg = averages.length ? Math.round((averages.reduce((sum, v) => sum + v, 0) / averages.length) * 100) / 100 : null;
@@ -151,6 +175,7 @@ export function groupMenuScreen(data: JournalData, gi: number, totalGroups: numb
     { text: '🏆 Рейтинг', callback_data: `r:${gi}` },
     { text: '📚 Предметы', callback_data: `p:${gi}` },
   ]);
+  buttons.push(...widgetToggleRow(widgetToggle));
 
   if (totalGroups > 1) {
     buttons.push([{ text: '⬅️ К группам', callback_data: 'grp' }]);
