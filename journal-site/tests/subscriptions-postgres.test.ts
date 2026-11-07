@@ -69,6 +69,15 @@ runIf('хранилище подписок в Postgres', () => {
     expect(await store.readSnapshot('нет-такой-группы')).toBeNull();
   });
 
+  it('помнит отправленные уведомления: одно событие чат получает один раз', async () => {
+    expect(await store.claimNotification?.(4242, 'отпечаток-1')).toBe(true);
+    expect(await store.claimNotification?.(4242, 'отпечаток-1')).toBe(false);
+    expect(await store.claimNotification?.(4243, 'отпечаток-1')).toBe(true);
+    // Два одновременных прохода: отправит только один.
+    const both = await Promise.all([store.claimNotification?.(4242, 'отпечаток-2'), store.claimNotification?.(4242, 'отпечаток-2')]);
+    expect(both.filter(Boolean)).toHaveLength(1);
+  });
+
   it('отписка убирает запись', async () => {
     await store.remove(4242, 'g-test', 7);
     expect(await store.listByGroup('g-test')).toHaveLength(0);

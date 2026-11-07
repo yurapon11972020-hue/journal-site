@@ -75,7 +75,7 @@ beforeEach(() => {
   process.env.TELEGRAM_WIDGETS = 'on';
   settings = new MemorySettings();
   setWidgetSettingsStoreForTests(settings);
-  mocks.widget.mockReset().mockResolvedValue(true);
+  mocks.widget.mockReset().mockResolvedValue('sent');
   mocks.send.mockReset().mockResolvedValue(undefined);
   mocks.sendChecked.mockReset().mockResolvedValue(true);
   mocks.rooms.mockReset().mockResolvedValue(new Map([['коваленко:др', 'https://eduskp-surgut.store/b/adm-pfh-00g-o3l']]));
@@ -115,7 +115,7 @@ describe('уведомления об оценках карточками', () =
 
   it('без карточек или при отказе Telegram приходит прежний текст', async () => {
     storeWithNewFive();
-    mocks.widget.mockResolvedValue(false);
+    mocks.widget.mockResolvedValue('failed');
     await watchGroup('g1', 'ИСиП-24/1', data);
     expect(mocks.send).toHaveBeenCalledTimes(1);
     expect(mocks.send.mock.calls[0][1]).toMatch(/^🔥 5 по «Математика» — /);
@@ -156,7 +156,7 @@ describe('напоминания о лекциях карточками', () => 
     store.subscriptions = [{ chatId: 42, groupName: 'ПД-24/1', video: true, lecture: false }];
     setLectureStoreForTests(store);
     mocks.schedule.mockResolvedValue({ groups: ['ПД-24/1'], items: [lesson] });
-    mocks.widget.mockResolvedValue(false);
+    mocks.widget.mockResolvedValue('failed');
 
     expect((await runLectureReminders(NOW)).sent).toBe(1);
     expect(mocks.sendChecked).toHaveBeenCalledTimes(1);

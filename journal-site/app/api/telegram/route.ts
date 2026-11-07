@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { lastGradeWatchRun, type WatchResult } from '@/lib/grade-watch';
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
 import { kickBroadcastDrain } from '@/lib/broadcast-scheduler';
 import { getBroadcastStore } from '@/lib/broadcast-store';
@@ -96,6 +97,22 @@ interface TelegramUpdate {
   };
 }
 
+/** /notify_status — что было на последней проверке оценок. */
+function gradeWatchStatus(): string {
+  const run = lastGradeWatchRun();
+  if (!run) {
+    return '🔔 С последнего перезапуска сервера проверки оценок ещё не было: она идёт после очередного обновления журналов.';
+  }
+  const time = new Date(run.at).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Yekaterinburg', hour: '2-digit', minute: '2-digit' });
+  const total = (pick: (item: WatchResult) => number | undefined) => run.results.reduce((sum, item) => sum + (pick(item) ?? 0), 0);
+  const restructured = run.results.filter((item) => item.restructured).map((item) => item.groupName);
+  return [
+    `🔔 Последняя проверка оценок в ${time}: групп ${run.results.length}, изменений ${total((item) => item.changes)}, отправлено ${total((item) => item.messages)}.`,
+    `Повторов не отправлено: ${total((item) => item.duplicates)}, отметок с поправленной датой: ${total((item) => item.moved)}.`,
+    restructured.length ? `Журнал перестроен, снимок обновлён без рассылки: ${restructured.map(escapeHtml).join(', ')}.` : '',
+  ].filter(Boolean).join('\n');
+}
+
 /** Владелец бота — тот же Telegram ID, что у рассылки. */
 function ownerChatId(): number | null {
   const rawId = process.env.TELEGRAM_BROADCAST_ADMIN_ID?.trim() ?? '';
@@ -110,9 +127,12 @@ function ownerChatId(): number | null {
  */
 async function widgetCommandReply(chatId: number, argument?: string): Promise<string> {
   if (argument === 'test') {
-    const delivered = await sendWidget(chatId, testWidget(), undefined, { ignorePause: true });
-    return delivered
-      ? '✅ Telegram принял тестовую карточку — она выше. Если вместо анимации написано, что сообщение не поддерживается, обнови Telegram на этом устройстве.'
+    const delivery = await sendWidget(chatId, testWidget(), undefined, { ignorePause: true });
+    if (delivery === 'sent') {
+      return '✅ Telegram принял тестовую карточку — она выше. Если вместо анимации написано, что сообщение не поддерживается, обнови Telegram на этом устройстве.';
+    }
+    return delivery === 'unknown'
+      ? `⏳ Telegram не ответил вовремя — карточка могла прийти, а могла и нет. ${widgetDeliveryNote()}`
       : `❌ Telegram не принял тестовую карточку. ${widgetDeliveryNote()}`;
   }
   if (argument === 'on' || argument === 'off') {
@@ -149,6 +169,11 @@ async function handleBroadcastMessage(message: NonNullable<TelegramUpdate['messa
 
   if (/^\/myid(?:@[\w]+)?$/i.test(text)) {
     await sendMessage(chat.id, `Ваш Telegram ID: <code>${chat.id}</code>`);
+    return true;
+  }
+
+  if (/^\/notify_status(?:@[\w]+)?$/i.test(text) && ownerChatId() === chat.id) {
+    await sendMessage(chat.id, gradeWatchStatus());
     return true;
   }
 
@@ -615,10 +640,13 @@ async function showScreen(
     if (source?.fromWidget && screen.sameScreen && await editReplyMarkup(chatId, source.messageId, buttons)) {
       return;
     }
-    if (await sendWidget(chatId, screen.widget, buttons)) {
+    const delivery = await sendWidget(chatId, screen.widget, buttons);
+    if (delivery === 'sent') {
       if (source) await deleteMessage(chatId, source.messageId);
       return;
     }
+    // Ответа нет, но карточка могла прийти: старое меню оставляем, текст не дублируем.
+    if (delivery === 'unknown') return;
   }
 
   if (source && !source.fromWidget && await editMessage(chatId, source.messageId, screen.text, screen.buttons)) {

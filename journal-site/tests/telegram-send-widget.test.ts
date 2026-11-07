@@ -32,19 +32,19 @@ describe('отправка карточки (sendWidget)', () => {
   it('без метода на основном сервере отправляет через бета-сервер и дальше идёт туда сразу', async () => {
     fetchMock.mockResolvedValueOnce(notFound()).mockResolvedValueOnce(sent()).mockResolvedValueOnce(sent());
 
-    expect(await sendWidget(42, WIDGET)).toBe(true);
+    expect(await sendWidget(42, WIDGET)).toBe('sent');
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([MAIN, BETA]);
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ chat_id: 42, html: WIDGET.html, caption: 'подпись', parse_mode: 'HTML' });
     expect(widgetDeliveryNote()).toContain('через бета-сервер Telegram');
 
-    expect(await sendWidget(42, WIDGET)).toBe(true);
+    expect(await sendWidget(42, WIDGET)).toBe('sent');
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([MAIN, BETA, BETA]);
   });
 
   it('основной сервер, который знает метод, используется без беты', async () => {
     fetchMock.mockResolvedValueOnce(sent());
 
-    expect(await sendWidget(42, WIDGET)).toBe(true);
+    expect(await sendWidget(42, WIDGET)).toBe('sent');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(widgetDeliveryNote()).toContain('через основной сервер Telegram');
   });
@@ -53,26 +53,36 @@ describe('отправка карточки (sendWidget)', () => {
     fetchMock.mockResolvedValueOnce(reply(400, { ok: false, description: 'Bad Request: INPUT_MEDIA_WIDGET_TOO_LARGE' }))
       .mockResolvedValueOnce(sent());
 
-    expect(await sendWidget(42, WIDGET)).toBe(false);
+    expect(await sendWidget(42, WIDGET)).toBe('failed');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(widgetDeliveryNote()).toContain('INPUT_MEDIA_WIDGET_TOO_LARGE');
-    expect(await sendWidget(42, WIDGET)).toBe(true);
+    expect(await sendWidget(42, WIDGET)).toBe('sent');
   });
 
   it('если метода нет нигде, 15 минут не спрашивает, а проверка владельца спрашивает сразу', async () => {
     fetchMock.mockResolvedValueOnce(notFound()).mockResolvedValueOnce(notFound());
 
-    expect(await sendWidget(42, WIDGET)).toBe(false);
+    expect(await sendWidget(42, WIDGET)).toBe('failed');
     expect(widgetDeliveryNote()).toContain('Telegram ответил «Not Found»');
     expect(widgetDeliveryNote()).toContain('попробует снова через 15 мин.');
 
-    expect(await sendWidget(42, WIDGET)).toBe(false);
+    expect(await sendWidget(42, WIDGET)).toBe('failed');
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     fetchMock.mockResolvedValueOnce(notFound()).mockResolvedValueOnce(sent());
-    expect(await sendWidget(42, WIDGET, undefined, { ignorePause: true })).toBe(true);
+    expect(await sendWidget(42, WIDGET, undefined, { ignorePause: true })).toBe('sent');
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(await sendWidget(42, WIDGET).then(() => fetchMock.mock.calls.length)).toBe(5);
+  });
+
+  it('без ответа сервера карточку не повторяет и 15 минут шлёт текстом', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('The operation was aborted due to timeout'));
+
+    expect(await sendWidget(42, WIDGET)).toBe('unknown');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(widgetDeliveryNote()).toContain('попробует снова через 15 мин.');
+    expect(await sendWidget(42, WIDGET)).toBe('failed');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('до первой карточки так и говорит', () => {

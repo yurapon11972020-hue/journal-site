@@ -21,6 +21,11 @@ export interface SubscriptionStore {
   remove(chatId: number, groupId: string, studentId: number): Promise<void>;
   readSnapshot(groupId: string): Promise<MarksSnapshot | null>;
   writeSnapshot(groupId: string, marks: MarksSnapshot): Promise<void>;
+  /**
+   * Отмечает, что чат получил уведомление с этим отпечатком.
+   * true — впервые, можно отправлять; false — уже получал, повтор не нужен.
+   */
+  claimNotification?(chatId: number, fingerprint: string): Promise<boolean>;
 }
 
 /* ----------------------------- в памяти ----------------------------- */
@@ -32,6 +37,7 @@ export interface SubscriptionStore {
 class MemoryStore implements SubscriptionStore {
   private readonly subscriptions = new Map<string, Subscription>();
   private readonly snapshots = new Map<string, MarksSnapshot>();
+  private readonly delivered = new Set<string>();
 
   private static key(chatId: number, groupId: string, studentId: number): string {
     return `${chatId}|${groupId}|${studentId}`;
@@ -63,6 +69,13 @@ class MemoryStore implements SubscriptionStore {
   async writeSnapshot(groupId: string, marks: MarksSnapshot): Promise<void> {
     this.snapshots.set(groupId, marks);
   }
+
+  async claimNotification(chatId: number, fingerprint: string): Promise<boolean> {
+    const key = `${chatId}|${fingerprint}`;
+    if (this.delivered.has(key)) return false;
+    this.delivered.add(key);
+    return true;
+  }
 }
 
 /* ----------------------------- Postgres ----------------------------- */
@@ -85,6 +98,16 @@ const CREATE_TABLES = `
     taken_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     marks    JSONB NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS grade_notifications (
+    chat_id     BIGINT NOT NULL,
+    fingerprint TEXT   NOT NULL,
+    sent_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (chat_id, fingerprint)
+  );
+
+  -- Отметки старше полугода не повторяются: учебный год сменился, записи не нужны.
+  DELETE FROM grade_notifications WHERE sent_at < now() - interval '200 days';
 `;
 
 class PostgresStore implements SubscriptionStore {
@@ -159,6 +182,17 @@ class PostgresStore implements SubscriptionStore {
        ON CONFLICT (group_id) DO UPDATE SET taken_at = now(), marks = EXCLUDED.marks`,
       [groupId, JSON.stringify(marks)],
     );
+  }
+
+  /** Вставка атомарна: из двух одновременных проходов отправит только один. */
+  async claimNotification(chatId: number, fingerprint: string): Promise<boolean> {
+    await this.ensureReady();
+    const result = await this.pool.query(
+      `INSERT INTO grade_notifications (chat_id, fingerprint) VALUES ($1, $2)
+       ON CONFLICT (chat_id, fingerprint) DO NOTHING`,
+      [chatId, fingerprint],
+    );
+    return result.rowCount === 1;
   }
 }
 

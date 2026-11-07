@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 
 import { getJournalDataByPath, getJournalGroups } from '@/lib/journal';
 import { describeChange, type JournalChange } from '@/lib/notify-messages';
-import { getSubscriptionStore, type MarksSnapshot, type Subscription } from '@/lib/subscriptions';
+import { getSubscriptionStore, type MarksSnapshot, type Subscription, type SubscriptionStore } from '@/lib/subscriptions';
 import { sendMessage, sendWidget } from '@/lib/telegram';
 import type { JournalData } from '@/lib/types';
 import { widgetsEnabledFor } from '@/lib/widget-settings';
@@ -17,6 +17,8 @@ const REPLACED_ISIP_R_GROUP_ID = 'X0p3qpi4K5zZhKZU';
 const REPLACED_ISIP_R_SOURCE = 'https://disk.yandex.ru/d/AHWThZMsG2LgWw';
 /** Не является ключом оценки: diffSnapshots пропускает его при сравнении. */
 const ISIP_R_SOURCE_MARKER = '__journal_source_and_roster__';
+/** Отпечаток списка студентов: номер строки и имя. Тоже не ключ оценки. */
+const ROSTER_MARKER = '__roster__';
 
 function normalizedStudentName(name: string): string {
   return name.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru').replace(/ё/g, 'е');
@@ -29,6 +31,16 @@ function isipRSourceVersion(data: JournalData): string {
     data.students.map((student) => [student.id, normalizedStudentName(student.name)]),
     data.subjects.map((subject) => [subject.sheetName, subject.subjectName]),
   ])).digest('hex');
+}
+
+/**
+ * Подписки и снимок держатся за номер строки в Excel. Если строки сдвинулись
+ * (вставили или убрали студента), под тем же номером теперь другой человек.
+ */
+function rosterVersion(data: JournalData): string {
+  return crypto.createHash('sha256').update(JSON.stringify(
+    data.students.map((student) => [student.id, normalizedStudentName(student.name)]),
+  )).digest('hex');
 }
 
 /** Числовой ID — позиция в Excel; после замены файла подписчика сверяем по имени. */
@@ -163,6 +175,79 @@ export interface WatchResult {
   baseline: boolean;
   changes: number;
   messages: number;
+  /** Сколько сообщений не отправили, потому что этот чат уже получал то же самое. */
+  duplicates?: number;
+  /** Сколько отметок только «переехали» в соседний столбец (поправили дату занятия). */
+  moved?: number;
+  /** Журнал перестроили (вставили строки, поменяли даты): снимок обновлён молча. */
+  restructured?: boolean;
+}
+
+/** Если за проход изменилась такая доля уже стоявших отметок, журнал перестроили, а не заполняли. */
+const RESTRUCTURE_SHARE = 0.2;
+const RESTRUCTURE_MIN_CHANGES = 10;
+
+function markKey(value: string): string {
+  return value.replace(/ /g, ' ').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, '');
+}
+
+/**
+ * Отпечаток уведомления: группа, студент по имени, предмет, занятие и новая отметка.
+ * Одно и то же событие один чат получает один раз, даже если журнал «мигнул»
+ * старой копией или два прохода совпали по времени.
+ */
+export function notificationFingerprint(groupId: string, change: JournalChange): string {
+  return crypto.createHash('sha256').update(JSON.stringify([
+    groupId,
+    normalizedStudentName(change.studentName),
+    change.subject.trim(),
+    change.columnLabel.trim(),
+    markKey(change.after),
+  ])).digest('hex').slice(0, 40);
+}
+
+/**
+ * Отметка ушла из одного столбца и такая же появилась в другом у того же
+ * студента по тому же предмету: поправили дату занятия, новой оценки нет.
+ */
+export function movedMarks(changes: JournalChange[]): Set<JournalChange> {
+  const removed = new Map<string, number>();
+  for (const change of changes) {
+    if (change.before.trim() && !change.after.trim()) {
+      const key = JSON.stringify([change.studentId, change.subject, markKey(change.before)]);
+      removed.set(key, (removed.get(key) ?? 0) + 1);
+    }
+  }
+
+  const moved = new Set<JournalChange>();
+  for (const change of changes) {
+    if (change.before.trim() || !change.after.trim()) continue;
+    const key = JSON.stringify([change.studentId, change.subject, markKey(change.after)]);
+    const left = removed.get(key) ?? 0;
+    if (left > 0) {
+      removed.set(key, left - 1);
+      moved.add(change);
+    }
+  }
+  return moved;
+}
+
+/** Изменились или пропали многие из уже стоявших отметок — значит, журнал перестроили. */
+export function looksRestructured(previous: MarksSnapshot, changes: JournalChange[]): boolean {
+  const existing = Object.entries(previous).filter(([key, value]) => !key.startsWith('__') && value.trim()).length;
+  const disturbed = changes.filter((change) => change.before.trim()).length;
+  return disturbed >= RESTRUCTURE_MIN_CHANGES && disturbed >= existing * RESTRUCTURE_SHARE;
+}
+
+/** Помечает событие отправленным; false — этот чат его уже получал. Ошибка базы не глушит уведомление. */
+async function firstDelivery(store: SubscriptionStore, chatId: number, fingerprint: string): Promise<boolean> {
+  if (!store.claimNotification) return true;
+  try {
+    return await store.claimNotification(chatId, fingerprint);
+  } catch (error) {
+    console.error(`[уведомления] Не удалось сверить с отправленными для чата ${chatId}:`, error);
+    return true;
+  }
 }
 
 /**
@@ -174,6 +259,7 @@ export interface WatchResult {
 export async function watchGroup(groupId: string, groupName: string, data: JournalData): Promise<WatchResult> {
   const store = getSubscriptionStore();
   const current = buildSnapshot(data);
+  current[ROSTER_MARKER] = rosterVersion(data);
   if (groupId === REPLACED_ISIP_R_GROUP_ID) {
     current[ISIP_R_SOURCE_MARKER] = isipRSourceVersion(data);
   }
@@ -187,26 +273,43 @@ export async function watchGroup(groupId: string, groupName: string, data: Journ
 
   const studentNames = new Map(data.students.map((student) => [student.id, student.name]));
   const changes = diffSnapshots(previous, current, studentNames);
+  // Старый снимок без отпечатка списка просто его получит.
+  const rosterMoved = Boolean(previous[ROSTER_MARKER]) && previous[ROSTER_MARKER] !== current[ROSTER_MARKER];
 
-  if (!changes.length) {
+  if (!changes.length && !rosterMoved) {
+    if (!previous[ROSTER_MARKER]) await store.writeSnapshot(groupId, current);
     return { groupId, groupName, baseline: false, changes: 0, messages: 0 };
   }
 
+  // Вставленная строка или поправленные даты сдвигают отметки: это не новые
+  // оценки, и рассылать их заново нельзя. Снимок просто становится новым.
+  if (rosterMoved || looksRestructured(previous, changes)) {
+    console.warn(`[уведомления] Журнал «${groupName}» перестроен (${changes.length} изменений) — снимок обновлён без рассылки.`);
+    await store.writeSnapshot(groupId, current);
+    return { groupId, groupName, baseline: true, changes: changes.length, messages: 0, restructured: true };
+  }
+
+  const moved = movedMarks(changes);
   const savedSubscriptions = await store.listByGroup(groupId);
   const subscriptions = groupId === REPLACED_ISIP_R_GROUP_ID
     ? subscriptionsForCurrentRoster(savedSubscriptions, data)
     : savedSubscriptions;
   let sent = 0;
+  let duplicates = 0;
 
   for (const change of changes) {
     if (sent >= MAX_MESSAGES_PER_RUN) {
       break;
+    }
+    if (moved.has(change)) {
+      continue;
     }
 
     const text = describeChange(change);
     if (!text) {
       continue;
     }
+    const fingerprint = notificationFingerprint(groupId, change);
     // Карточка одна на изменение: собирается при первом подписчике, которому она нужна.
     let widget: WidgetMessage | null | undefined;
 
@@ -217,12 +320,17 @@ export async function watchGroup(groupId: string, groupName: string, data: Journ
       if (!matchesSubscription(subscription, change)) {
         continue;
       }
+      if (!(await firstDelivery(store, subscription.chatId, fingerprint))) {
+        duplicates += 1;
+        continue;
+      }
 
       try {
         let delivered = false;
         if (await widgetsEnabledFor(subscription.chatId)) {
           if (widget === undefined) widget = gradeAlertWidget(change, data);
-          delivered = widget !== null && await sendWidget(subscription.chatId, widget);
+          // «Нет ответа» считаем доставкой: карточка могла дойти, и текст стал бы повтором.
+          delivered = widget !== null && (await sendWidget(subscription.chatId, widget)) !== 'failed';
         }
         if (!delivered) {
           await sendMessage(subscription.chatId, text);
@@ -239,11 +347,28 @@ export async function watchGroup(groupId: string, groupName: string, data: Journ
   // Снимок обновляем в любом случае: иначе то же изменение придёт повторно.
   await store.writeSnapshot(groupId, current);
 
-  return { groupId, groupName, baseline: false, changes: changes.length, messages: sent };
+  return { groupId, groupName, baseline: false, changes: changes.length, messages: sent, duplicates, moved: moved.size };
 }
 
-/** Проходит по всем группам. Вызывается после обновления журналов. */
-export async function runGradeWatch(): Promise<WatchResult[]> {
+interface GradeWatchRuntime {
+  running: Promise<WatchResult[]> | null;
+  /** Последний проход — для владельца бота (команда /notify_status). */
+  lastRun: { at: number; results: WatchResult[] } | null;
+}
+
+/** Общее на процесс: таймер обновления и бот могут жить в разных сборках Next.js. */
+function gradeWatchRuntime(): GradeWatchRuntime {
+  const store = globalThis as typeof globalThis & { [key: symbol]: GradeWatchRuntime | undefined };
+  const key = Symbol.for('journal.gradeWatch.runtime');
+  store[key] ??= { running: null, lastRun: null };
+  return store[key];
+}
+
+export function lastGradeWatchRun(): { at: number; results: WatchResult[] } | null {
+  return gradeWatchRuntime().lastRun;
+}
+
+async function executeGradeWatch(): Promise<WatchResult[]> {
   const groups = await getJournalGroups();
   const results: WatchResult[] = [];
 
@@ -257,5 +382,19 @@ export async function runGradeWatch(): Promise<WatchResult[]> {
     }
   }
 
+  gradeWatchRuntime().lastRun = { at: Date.now(), results };
   return results;
+}
+
+/**
+ * Проходит по всем группам. Вызывается после обновления журналов.
+ * Пока идёт проход, второй не начинается: оба сверились бы с одним и тем же
+ * старым снимком и разослали бы одни и те же оценки дважды.
+ */
+export function runGradeWatch(): Promise<WatchResult[]> {
+  const state = gradeWatchRuntime();
+  state.running ??= executeGradeWatch().finally(() => {
+    state.running = null;
+  });
+  return state.running;
 }
