@@ -159,7 +159,8 @@ async function sendLectureReminder(chatId: number, item: DueLecture, now: Date, 
       room: [item.lesson.room_label, item.lesson.room].filter(Boolean).join(' '),
       links: lectureReminderLinks(item, rooms),
     });
-    if (widget && await sendWidget(chatId, widget)) return true;
+    // «Нет ответа» считаем доставкой: иначе текст пришёл бы вторым напоминанием.
+    if (widget && (await sendWidget(chatId, widget)) !== 'failed') return true;
   }
   return sendMessageChecked(chatId, lectureReminderText(item, now, rooms));
 }

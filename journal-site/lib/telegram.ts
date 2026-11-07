@@ -81,23 +81,41 @@ const SERVER_REFUSALS = new Set([401, 403, 404]);
 
 /** Пока ни один сервер не принимает виджеты, не дёргаем их на каждое сообщение. */
 const WIDGET_API_PAUSE_MS = 15 * 60 * 1000;
-let widgetApiPausedUntil = 0;
-/** Сервер, который последним принял виджет: с него и начинаем. */
-let widgetServer: WidgetServer = 'main';
-let lastWidgetAttempt: { at: number; ok: boolean; server: WidgetServer; description: string } | null = null;
+
+interface WidgetApiState {
+  pausedUntil: number;
+  /** Сервер, который последним принял виджет: с него и начинаем. */
+  server: WidgetServer;
+  lastAttempt: { at: number; ok: boolean; server: WidgetServer; description: string } | null;
+}
+
+/** Общее на процесс: уведомления и бот могут жить в разных сборках Next.js. */
+function widgetApi(): WidgetApiState {
+  const store = globalThis as typeof globalThis & { [key: symbol]: WidgetApiState | undefined };
+  const key = Symbol.for('journal.telegram.widgetApi');
+  store[key] ??= { pausedUntil: 0, server: 'main', lastAttempt: null };
+  return store[key];
+}
+
+/**
+ * Итог отправки карточки:
+ * sent — Telegram её принял; failed — не принял, можно слать текст;
+ * unknown — ответа не дождались: карточка могла дойти, и текст стал бы повтором.
+ */
+export type WidgetDelivery = 'sent' | 'failed' | 'unknown';
 
 /**
  * Отправляет виджет (метод sendWidget из Bot API 10.4). Если основной сервер
  * метода не знает, пробует бета-сервер Telegram.
- * false — виджет не принят, и вызывающий отправляет обычный текст.
  */
 export async function sendWidget(
   chatId: number,
   widget: WidgetPayload,
   buttons?: InlineButton[][],
   options: { ignorePause?: boolean } = {},
-): Promise<boolean> {
-  if (!options.ignorePause && Date.now() < widgetApiPausedUntil) return false;
+): Promise<WidgetDelivery> {
+  const state = widgetApi();
+  if (!options.ignorePause && Date.now() < state.pausedUntil) return 'failed';
 
   const payload = {
     chat_id: chatId,
@@ -106,46 +124,54 @@ export async function sendWidget(
     parse_mode: widget.caption ? 'HTML' : undefined,
     reply_markup: buttons ? { inline_keyboard: buttons } : undefined,
   };
-  const order: WidgetServer[] = widgetServer === 'beta' ? ['beta', 'main'] : ['main', 'beta'];
+  const order: WidgetServer[] = state.server === 'beta' ? ['beta', 'main'] : ['main', 'beta'];
 
   for (const server of order) {
     const { result, status, description } = await tgCall<{ message_id?: number }>(
-      'sendWidget', payload, 10_000, WIDGET_SERVERS[server],
+      'sendWidget', payload, 8_000, WIDGET_SERVERS[server],
     );
-    lastWidgetAttempt = { at: Date.now(), ok: result !== null, server, description };
+    state.lastAttempt = { at: Date.now(), ok: result !== null, server, description };
     if (result !== null) {
-      widgetServer = server;
-      widgetApiPausedUntil = 0;
-      return true;
+      state.server = server;
+      state.pausedUntil = 0;
+      return 'sent';
+    }
+    if (status === 0) {
+      // Ответа нет, а сообщение могло уйти. Повторять нельзя; следующие
+      // сообщения 15 минут идут текстом, чтобы не ждать медленный сервер.
+      state.pausedUntil = Date.now() + WIDGET_API_PAUSE_MS;
+      return 'unknown';
     }
     // Ошибка про само сообщение (размер, права в группе) другой сервер не исправит.
-    if (!SERVER_REFUSALS.has(status)) return false;
+    if (!SERVER_REFUSALS.has(status)) return 'failed';
   }
 
-  widgetApiPausedUntil = Date.now() + WIDGET_API_PAUSE_MS;
-  return false;
+  state.pausedUntil = Date.now() + WIDGET_API_PAUSE_MS;
+  return 'failed';
 }
 
 /** Что было с последней карточкой — для владельца бота (команда /widgets). */
 export function widgetDeliveryNote(now = Date.now()): string {
-  const attempt = lastWidgetAttempt;
+  const state = widgetApi();
+  const attempt = state.lastAttempt;
   if (!attempt) return 'С последнего перезапуска сервера карточек ещё не отправлялось.';
 
   const time = new Date(attempt.at).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Yekaterinburg', hour: '2-digit', minute: '2-digit' });
   if (attempt.ok) {
     return `Последняя карточка в ${time} отправлена через ${attempt.server === 'beta' ? 'бета-сервер' : 'основной сервер'} Telegram.`;
   }
-  const pause = widgetApiPausedUntil > now
-    ? ` Пока бот шлёт обычные сообщения и попробует снова через ${Math.ceil((widgetApiPausedUntil - now) / 60_000)} мин.`
+  const pause = state.pausedUntil > now
+    ? ` Пока бот шлёт обычные сообщения и попробует снова через ${Math.ceil((state.pausedUntil - now) / 60_000)} мин.`
     : '';
   return `Последняя попытка в ${time} не удалась: Telegram ответил «${attempt.description}».${pause}`;
 }
 
 /** Только для тестов: забыть паузу, выбранный сервер и последнюю попытку. */
 export function resetWidgetApiPauseForTests(): void {
-  widgetApiPausedUntil = 0;
-  widgetServer = 'main';
-  lastWidgetAttempt = null;
+  const state = widgetApi();
+  state.pausedUntil = 0;
+  state.server = 'main';
+  state.lastAttempt = null;
 }
 
 export async function sendMessage(chatId: number, text: string, buttons?: InlineButton[][]): Promise<void> {

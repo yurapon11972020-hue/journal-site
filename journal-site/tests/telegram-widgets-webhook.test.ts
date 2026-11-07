@@ -74,7 +74,7 @@ beforeEach(() => {
     { id: 'g2', groupName: 'ПД-24/2', fileName: 'b.xlsx', filePath: '/b', source: 'local', sourceDetails: '' },
   ]);
   mocks.data.mockResolvedValue(widgetJournal());
-  mocks.widget.mockResolvedValue(true);
+  mocks.widget.mockResolvedValue('sent');
   mocks.edit.mockResolvedValue(true);
   mocks.remove.mockResolvedValue(true);
   mocks.markup.mockResolvedValue(true);
@@ -114,7 +114,7 @@ describe('бот с анимированными карточками', () => {
   });
 
   it('если Telegram не принял карточку, приходит обычный табель на месте меню', async () => {
-    mocks.widget.mockResolvedValue(false);
+    mocks.widget.mockResolvedValue('failed');
 
     await click('c:0:1');
 
@@ -148,7 +148,7 @@ describe('бот с анимированными карточками', () => {
   });
 
   it('если карточку не приняли, из карточки приходит текст, а она сама убирается', async () => {
-    mocks.widget.mockResolvedValue(false);
+    mocks.widget.mockResolvedValue('failed');
 
     await click('s:0', { text: undefined, widget: { is_copy: false } });
 
@@ -221,7 +221,7 @@ describe('бот с анимированными карточками', () => {
     expect(mocks.widget).toHaveBeenCalledWith(42, expect.objectContaining({ caption: expect.stringContaining('Тестовая карточка') }), undefined, { ignorePause: true });
     expect(mocks.send.mock.lastCall?.[1]).toContain('✅ Telegram принял тестовую карточку');
 
-    mocks.widget.mockResolvedValue(false);
+    mocks.widget.mockResolvedValue('failed');
     await say('/widgets test');
     expect(mocks.send.mock.lastCall?.[1]).toContain('❌ Telegram не принял тестовую карточку');
 
