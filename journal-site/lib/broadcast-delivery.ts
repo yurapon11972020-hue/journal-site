@@ -57,10 +57,10 @@ function pause(ms: number): Promise<void> {
  * GitHub heartbeat, so their combined send rate stays below Telegram's limit.
  * A job's recipient set is frozen when the admin submits its one message.
  */
-export async function runPendingBroadcasts(): Promise<BroadcastRunResult> {
+export async function runPendingBroadcasts(batchSize = BATCH_SIZE): Promise<BroadcastRunResult> {
   const store = getBroadcastStore();
   const result = await store.withWorkerLock(async (): Promise<BroadcastRunResult> => {
-    const deliveries = await store.claimPending(BATCH_SIZE);
+    const deliveries = await store.claimPending(Math.min(BATCH_SIZE, Math.max(1, batchSize)));
     const counters = { claimed: deliveries.length, sent: 0, failed: 0 };
     for (let offset = 0; offset < deliveries.length; offset += PARALLEL_SENDS) {
       const wave = deliveries.slice(offset, offset + PARALLEL_SENDS);
