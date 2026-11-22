@@ -206,7 +206,8 @@ function isWithinRefreshWindow(date = new Date()): boolean {
 }
 
 function getPublicCacheDir(): string {
-  const configuredDir = process.env.JOURNAL_CACHE_DIR?.trim() || './.journal-cache';
+  const configuredDir = process.env.JOURNAL_CACHE_DIR?.trim() ||
+    (process.env.VERCEL === '1' || process.env.SITE_ID ? '/tmp/journal-cache' : './.journal-cache');
   return path.isAbsolute(configuredDir) ? configuredDir : path.join(process.cwd(), configuredDir);
 }
 
@@ -1192,6 +1193,9 @@ async function runGradeWatchSafely(): Promise<void> {
 }
 
 function startPublicCacheRefreshLoop(): void {
+  if (process.env.VERCEL === '1' || process.env.SITE_ID || process.env.JOURNAL_DISABLE_BACKGROUND === '1') {
+    return;
+  }
   const runtime = getCacheRuntime();
   if (runtime.interval) {
     return;

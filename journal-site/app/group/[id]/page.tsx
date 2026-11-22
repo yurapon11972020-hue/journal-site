@@ -6,6 +6,7 @@ import { findJournalGroupById, getJournalDataByGroupId } from '@/lib/journal';
 import type { JournalData } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 interface GroupPageProps {
   params: Promise<{

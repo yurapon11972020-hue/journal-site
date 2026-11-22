@@ -4,6 +4,7 @@ import { getJournalGroups } from '@/lib/journal';
 import type { JournalGroupRef } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 export default async function HomePage() {
   // Данные читаем в try/catch, а разметку возвращаем уже за его пределами:
