@@ -685,22 +685,26 @@ export async function POST(request: Request) {
       const chatId = query.message?.chat.id;
       const messageId = query.message?.message_id;
       const action = query.data || 'grp';
+      const rememberChat = chatId && messageId
+        ? rememberPrivateChat(chatId, query.message?.chat.type)
+        : Promise.resolve();
 
       // Сразу отвечаем телеграму, чтобы кнопка не «крутилась».
       await answerCallback(query.id);
 
       if (chatId && messageId) {
-        await rememberPrivateChat(chatId, query.message?.chat.type);
         const screen = await buildScreen(action, chatId);
         await showScreen(chatId, screen, { messageId, fromWidget: query.message?.widget !== undefined });
       }
+      await rememberChat;
     } else if (update.message) {
       const chatId = update.message.chat.id;
       adminBroadcastUpdate = update.message.chat.type === 'private'
         && update.message.from?.id === chatId
         && broadcastCredentials()?.adminId === chatId;
-      await rememberPrivateChat(chatId, update.message.chat.type);
+      const rememberChat = rememberPrivateChat(chatId, update.message.chat.type);
       if (await handleBroadcastMessage(update.message)) {
+        await rememberChat;
         return NextResponse.json({ ok: true });
       }
       if (update.message.text) {
@@ -708,6 +712,7 @@ export async function POST(request: Request) {
         const screen = await buildScreen(/^\/lectures(?:@[\w]+)?$/i.test(command) ? 'lg' : 'start', chatId);
         await showScreen(chatId, screen);
       }
+      await rememberChat;
     }
   } catch (error) {
     console.error('[telegram] Ошибка обработки апдейта:', error);
