@@ -72,6 +72,20 @@ export function applyTelegramTheme(theme: Theme): void {
   emit();
 }
 
+/** Восстанавливает оформление после гидратации, если React убрал атрибут с <html>. */
+export function restoreTheme(): void {
+  let theme = storedTheme();
+  if (!theme) {
+    try {
+      theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch {
+      theme = 'light';
+    }
+  }
+  document.documentElement.dataset.theme = theme;
+  emit();
+}
+
 export function useTheme(): { theme: Theme; toggleTheme: () => void } {
   const theme = useSyncExternalStore(subscribe, readTheme, readServerTheme);
 

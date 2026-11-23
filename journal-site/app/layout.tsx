@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import type { ReactNode } from 'react';
 
+import AppearanceInit from '@/components/appearance-init';
 import HolidayDecor from '@/components/holiday-decor';
 import TelegramInit from '@/components/telegram-init';
 import { HOLIDAY_BOOTSTRAP_SCRIPT } from '@/lib/holiday';
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: HOLIDAY_BOOTSTRAP_SCRIPT }} />
       </head>
       <body>
+        <AppearanceInit />
         <TelegramInit />
         {children}
         <HolidayDecor />

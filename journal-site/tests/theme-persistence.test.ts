@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { applyTelegramTheme, applyTheme, THEME_BOOTSTRAP_SCRIPT, THEME_STORAGE_KEY } from '@/lib/use-theme';
+import { applyTelegramTheme, applyTheme, restoreTheme, THEME_BOOTSTRAP_SCRIPT, THEME_STORAGE_KEY } from '@/lib/use-theme';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -42,5 +42,14 @@ describe('сохранение темы сайта', () => {
   it('использует тему устройства, если своего выбора ещё нет', () => {
     expect(runBootstrap(null, '', true)).toBe('dark');
     expect(runBootstrap(null, '', false)).toBe('light');
+  });
+
+  it('возвращает выбранную тему, если она исчезла после загрузки React', () => {
+    const document = { cookie: '', documentElement: { dataset: {} as Record<string, string> } };
+    vi.stubGlobal('document', document);
+    vi.stubGlobal('window', { localStorage: { getItem: () => 'dark' }, matchMedia: () => ({ matches: false }) });
+
+    restoreTheme();
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 });

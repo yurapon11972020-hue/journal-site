@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { HOLIDAY_BOOTSTRAP_SCRIPT, HOLIDAY_STORAGE_KEY, holidaySeason } from '@/lib/holiday';
+import { restoreHoliday } from '@/lib/use-holiday';
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('новогодний сезон', () => {
@@ -64,5 +66,16 @@ describe('скрипт украшений в <head>', () => {
 
   it('восстанавливает выбор из cookie, если localStorage недоступен', () => {
     expect(run(new Date(2026, 10, 5), null, true, `${HOLIDAY_STORAGE_KEY}=2026`)).toBe('off');
+  });
+
+  it('возвращает гирлянду, если атрибут исчез после загрузки React', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 23));
+    const document = { cookie: '', documentElement: { dataset: {} as Record<string, string> } };
+    vi.stubGlobal('document', document);
+    vi.stubGlobal('window', { localStorage: { getItem: () => null } });
+
+    restoreHoliday();
+    expect(document.documentElement.dataset.holiday).toBe('on');
   });
 });
