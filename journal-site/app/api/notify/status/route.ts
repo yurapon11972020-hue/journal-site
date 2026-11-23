@@ -42,7 +42,7 @@ export async function GET() {
       watchedGroups: watched,
       next_step:
         watched < groups.length
-          ? 'Часть групп ещё не в снимке — подожди очередное обновление журнала (до 5 минут).'
+          ? 'Снимки появятся после первой проверки групп, на которые есть подписчики.'
           : 'Всё готово: изменения в журнале будут доходить до подписчиков.',
     });
   } catch (error) {
@@ -54,8 +54,8 @@ export async function GET() {
         storage: configured ? 'база' : 'память',
         error: message,
         next_step: configured
-          ? 'Проверь DATABASE_URL в Render → Environment: строка должна начинаться с postgresql:// и заканчиваться ?sslmode=require'
-          : 'Добавь DATABASE_URL в Render → Environment.',
+          ? 'Проверь DATABASE_URL в переменных окружения сайта.'
+          : 'Добавь DATABASE_URL в переменные окружения сайта.',
       },
       { status: 500 },
     );

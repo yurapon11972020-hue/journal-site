@@ -30,7 +30,7 @@ export async function GET(request: Request) {
           ok: false,
           error: 'Не задан TELEGRAM_WEBHOOK_SECRET.',
           next_step:
-            'Добавь на Render переменную TELEGRAM_WEBHOOK_SECRET с любой длинной случайной строкой, дождись перезапуска и открой эту страницу снова.',
+            'Добавь переменную TELEGRAM_WEBHOOK_SECRET с длинной случайной строкой, дождись обновления сайта и открой эту страницу снова.',
         },
         { status: 503 },
       );
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       telegram: result.description,
       next_step: result.ok
         ? 'Готово! Открой своего бота в Telegram и нажми /start.'
-        : 'Проверь, что TELEGRAM_BOT_TOKEN задан в переменных окружения на Render.',
+        : 'Проверь, что TELEGRAM_BOT_TOKEN задан в переменных окружения сайта.',
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';

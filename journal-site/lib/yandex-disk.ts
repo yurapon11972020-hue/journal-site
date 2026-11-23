@@ -57,6 +57,10 @@ interface PublicResourceMeta {
   name?: string;
   path?: string;
   type?: string;
+  modified?: string;
+  size?: number;
+  md5?: string;
+  sha256?: string;
   _embedded?: {
     items?: YandexListItem[];
   };
@@ -170,7 +174,7 @@ function getPositiveNumberFromEnv(name: string, fallback: number): number {
 
 function getPublicCacheIntervalMs(): number {
   const configured = getPositiveNumberFromEnv('JOURNAL_CACHE_INTERVAL_MINUTES', DEFAULT_PUBLIC_CACHE_INTERVAL_MINUTES);
-  return (hasUnrevertedRenderSettings() && configured === 1 ? 5 : configured) * 60 * 1000;
+  return (hasUnrevertedRenderSettings() && configured === 1 && !process.env.SITE_ID ? 5 : configured) * 60 * 1000;
 }
 
 function getPublicCacheMaxFiles(): number {
@@ -188,7 +192,7 @@ function getHourFromEnv(name: string, fallback: number): number {
 
 // Окно, в которое журнал обновляется с Яндекс.Диска (по местному времени).
 // Вне окна сайт и бот отдают последнюю скачанную копию.
-function isWithinRefreshWindow(date = new Date()): boolean {
+export function isWithinRefreshWindow(date = new Date()): boolean {
   const configuredFrom = getHourFromEnv('JOURNAL_REFRESH_FROM_HOUR', 5);
   const from = Math.min(23, Math.max(0, Math.floor(hasUnrevertedRenderSettings() && configuredFrom === 0 ? 5 : configuredFrom)));
   const to = Math.min(24, Math.max(1, Math.floor(getHourFromEnv('JOURNAL_REFRESH_TO_HOUR', 24))));
@@ -206,7 +210,8 @@ function isWithinRefreshWindow(date = new Date()): boolean {
 }
 
 function getPublicCacheDir(): string {
-  const configuredDir = process.env.JOURNAL_CACHE_DIR?.trim() || './.journal-cache';
+  const configuredDir = process.env.JOURNAL_CACHE_DIR?.trim() ||
+    (process.env.VERCEL === '1' || process.env.SITE_ID ? '/tmp/journal-cache' : './.journal-cache');
   return path.isAbsolute(configuredDir) ? configuredDir : path.join(process.cwd(), configuredDir);
 }
 
@@ -1192,6 +1197,9 @@ async function runGradeWatchSafely(): Promise<void> {
 }
 
 function startPublicCacheRefreshLoop(): void {
+  if (process.env.VERCEL === '1' || process.env.SITE_ID || process.env.JOURNAL_DISABLE_BACKGROUND === '1') {
+    return;
+  }
   const runtime = getCacheRuntime();
   if (runtime.interval) {
     return;
@@ -1249,6 +1257,23 @@ async function resolvePublicGroupForPath(filePath?: string): Promise<PublicGroup
   }
 
   return first;
+}
+
+/** Метаданные позволяют проверять изменения без скачивания каждой книги каждую минуту. */
+export async function getPublicJournalVersion(filePath: string): Promise<string | null> {
+  const group = decodePublicGroupPath(filePath);
+  if (!group) return null;
+  const meta = await readPublicResourceMeta(group.publicKey, group.publicPath, 1);
+  if (!meta || meta.type !== 'file') return null;
+  return meta.sha256 || meta.md5 ||
+    (meta.modified ? JSON.stringify([meta.modified, meta.size ?? null]) : null);
+}
+
+/** После смены отпечатка скачиваем книгу, игнорируя обычный интервал кэша. */
+export async function forceRefreshPublicJournal(filePath: string): Promise<void> {
+  const group = decodePublicGroupPath(filePath);
+  if (!group) throw new Error('Для обновления не найден публичный журнал.');
+  await ensureFreshCachedPublicJournal(group, { force: true });
 }
 
 async function readFromCachedPublicYandexDisk(filePath?: string): Promise<JournalFileResult> {

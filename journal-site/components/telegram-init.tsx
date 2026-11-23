@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react';
 
+import { applyTelegramTheme } from '@/lib/use-theme';
+
 type TgWebApp = {
   initData?: string;
   platform?: string;
@@ -61,7 +63,7 @@ export default function TelegramInit() {
 
     function apply() {
       const tg = getTelegram();
-      if (!tg || typeof tg.initData !== 'string' || !tg.platform || tg.platform === 'unknown') {
+      if (!tg || !tg.initData?.trim() || !tg.platform || tg.platform === 'unknown') {
         return;
       }
 
@@ -77,7 +79,7 @@ export default function TelegramInit() {
 
       const applyScheme = () => {
         if (tg.colorScheme === 'light' || tg.colorScheme === 'dark') {
-          root.dataset.theme = tg.colorScheme;
+          applyTelegramTheme(tg.colorScheme);
         }
       };
 

@@ -25,6 +25,36 @@ function readServerHoliday(): HolidayState {
   return 'none';
 }
 
+function emit(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Возвращает сезонное оформление после гидратации страницы. */
+export function restoreHoliday(): void {
+  const season = holidaySeason(new Date());
+  if (!season) {
+    delete document.documentElement.dataset.holiday;
+    emit();
+    return;
+  }
+
+  let hidden = false;
+  try {
+    hidden = window.localStorage.getItem(HOLIDAY_STORAGE_KEY) === season;
+  } catch {
+    // Cookie остаётся запасным хранилищем.
+  }
+  if (!hidden) {
+    try {
+      hidden = (`; ${document.cookie}`).split(`; ${HOLIDAY_STORAGE_KEY}=`)[1]?.split(';')[0] === season;
+    } catch {
+      // В приватном режиме показываем украшения по умолчанию.
+    }
+  }
+  document.documentElement.dataset.holiday = hidden ? 'off' : 'on';
+  emit();
+}
+
 /** Состояние украшений и кнопка «убрать / вернуть». Подробности в lib/holiday. */
 export function useHoliday(): { holiday: HolidayState; toggleHoliday: () => void } {
   const holiday = useSyncExternalStore(subscribe, readHoliday, readServerHoliday);
@@ -37,21 +67,27 @@ export function useHoliday(): { holiday: HolidayState; toggleHoliday: () => void
 
     const next = current === 'on' ? 'off' : 'on';
     document.documentElement.dataset.holiday = next;
+    const season = holidaySeason(new Date());
 
     try {
-      const season = holidaySeason(new Date());
       if (next === 'off' && season) {
         window.localStorage.setItem(HOLIDAY_STORAGE_KEY, season);
       } else {
         window.localStorage.removeItem(HOLIDAY_STORAGE_KEY);
       }
     } catch {
-      // Приватный режим может запрещать localStorage — выбор просто не запомнится.
+      // Встроенный браузер может запрещать localStorage; ниже остаётся cookie.
     }
 
-    for (const listener of listeners) {
-      listener();
+    try {
+      document.cookie = next === 'off' && season
+        ? `${HOLIDAY_STORAGE_KEY}=${season}; Max-Age=34560000; Path=/; SameSite=Lax`
+        : `${HOLIDAY_STORAGE_KEY}=; Max-Age=0; Path=/; SameSite=Lax`;
+    } catch {
+      // Приватный режим может запрещать и cookie.
     }
+
+    emit();
   }, []);
 
   return { holiday, toggleHoliday };
