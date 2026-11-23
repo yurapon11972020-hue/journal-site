@@ -34,13 +34,41 @@ function readServerTheme(): Theme {
   return 'light';
 }
 
+function storedTheme(): Theme | null {
+  try {
+    const value = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (value === 'light' || value === 'dark') return value;
+  } catch {
+    // Некоторые встроенные браузеры запрещают localStorage.
+  }
+  try {
+    const value = (`; ${document.cookie}`).split(`; ${THEME_STORAGE_KEY}=`)[1]?.split(';')[0];
+    if (value === 'light' || value === 'dark') return value;
+  } catch {
+    // В таком случае используем тему устройства без сохранения.
+  }
+  return null;
+}
+
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
-    // Приватный режим браузера может запрещать localStorage — тема просто не запомнится.
+    // Встроенный браузер может запрещать localStorage; ниже остаётся cookie.
   }
+  try {
+    document.cookie = `${THEME_STORAGE_KEY}=${theme}; Max-Age=31536000; Path=/; SameSite=Lax`;
+  } catch {
+    // Приватный режим может запрещать и cookie.
+  }
+  emit();
+}
+
+/** Тема Telegram применяется, только пока пользователь не выбрал свою. */
+export function applyTelegramTheme(theme: Theme): void {
+  if (storedTheme()) return;
+  document.documentElement.dataset.theme = theme;
   emit();
 }
 
@@ -61,4 +89,4 @@ export function useTheme(): { theme: Theme; toggleTheme: () => void } {
  * Свой выбор пользователя важнее всего; если его нет — берём настройку
  * системы, а по умолчанию светлую: журнал читают днём и с проектора.
  */
-export const THEME_BOOTSTRAP_SCRIPT = `try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='light'}`;
+export const THEME_BOOTSTRAP_SCRIPT = `(function(){var t;try{t=localStorage.getItem('${THEME_STORAGE_KEY}')}catch(e){}if(t!=='light'&&t!=='dark'){try{t=('; '+document.cookie).split('; ${THEME_STORAGE_KEY}=')[1]?.split(';')[0]}catch(e){}}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}document.documentElement.dataset.theme=t})()`;

@@ -37,16 +37,24 @@ export function useHoliday(): { holiday: HolidayState; toggleHoliday: () => void
 
     const next = current === 'on' ? 'off' : 'on';
     document.documentElement.dataset.holiday = next;
+    const season = holidaySeason(new Date());
 
     try {
-      const season = holidaySeason(new Date());
       if (next === 'off' && season) {
         window.localStorage.setItem(HOLIDAY_STORAGE_KEY, season);
       } else {
         window.localStorage.removeItem(HOLIDAY_STORAGE_KEY);
       }
     } catch {
-      // Приватный режим может запрещать localStorage — выбор просто не запомнится.
+      // Встроенный браузер может запрещать localStorage; ниже остаётся cookie.
+    }
+
+    try {
+      document.cookie = next === 'off' && season
+        ? `${HOLIDAY_STORAGE_KEY}=${season}; Max-Age=34560000; Path=/; SameSite=Lax`
+        : `${HOLIDAY_STORAGE_KEY}=; Max-Age=0; Path=/; SameSite=Lax`;
+    } catch {
+      // Приватный режим может запрещать и cookie.
     }
 
     for (const listener of listeners) {

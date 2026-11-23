@@ -39,4 +39,4 @@ export function holidaySeason(date: Date): string | null {
  * Та же проверка сезона, что в holidaySeason, но строкой для <head>.
  * Если localStorage недоступен, украшения просто показываются.
  */
-export const HOLIDAY_BOOTSTRAP_SCRIPT = `(function(){var n=new Date(),m=n.getMonth()+1,s=m>=${SEASON_START_MONTH}?n.getFullYear():m===1&&n.getDate()<=${SEASON_LAST_JANUARY_DAY}?n.getFullYear()-1:0;if(!s)return;var o=null;try{o=localStorage.getItem('${HOLIDAY_STORAGE_KEY}')}catch(e){}document.documentElement.dataset.holiday=o===String(s)?'off':'on'})()`;
+export const HOLIDAY_BOOTSTRAP_SCRIPT = `(function(){var n=new Date(),m=n.getMonth()+1,s=m>=${SEASON_START_MONTH}?n.getFullYear():m===1&&n.getDate()<=${SEASON_LAST_JANUARY_DAY}?n.getFullYear()-1:0;if(!s)return;var o=null;try{o=localStorage.getItem('${HOLIDAY_STORAGE_KEY}')}catch(e){}if(o!==String(s)){try{o=('; '+document.cookie).split('; ${HOLIDAY_STORAGE_KEY}=')[1]?.split(';')[0]}catch(e){}}document.documentElement.dataset.holiday=o===String(s)?'off':'on'})()`;

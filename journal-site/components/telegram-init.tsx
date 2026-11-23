@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react';
 
+import { applyTelegramTheme } from '@/lib/use-theme';
+
 type TgWebApp = {
   initData?: string;
   platform?: string;
@@ -77,7 +79,7 @@ export default function TelegramInit() {
 
       const applyScheme = () => {
         if (tg.colorScheme === 'light' || tg.colorScheme === 'dark') {
-          root.dataset.theme = tg.colorScheme;
+          applyTelegramTheme(tg.colorScheme);
         }
       };
 
