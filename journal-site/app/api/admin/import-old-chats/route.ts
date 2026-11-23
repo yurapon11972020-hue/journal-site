@@ -10,7 +10,7 @@ export const maxDuration = 60;
 const OLD_CHAT_TABLES = ['bot_chats', 'subscriptions', 'lecture_subscriptions'] as const;
 
 function authorized(request: Request): boolean {
-  const expected = process.env.JOURNAL_CRON_SECRET?.trim();
+  const expected = process.env.OLD_CHAT_IMPORT_SECRET?.trim();
   const received = request.headers.get('authorization')?.replace(/^Bearer /i, '');
   if (!expected || !received) return false;
   const a = Buffer.from(expected);
